@@ -1,0 +1,9 @@
+/biblio/
+/_build/
+*.native
+*.byte
+/setup.data
+/setup.log
+/setup.ml
+/src/mirage_repo.ml
+/*.html

@@ -1,0 +1,25 @@
+OASISFormat: 0.4
+Name:        metrics
+Version:     0.0.1
+Synopsis:    Tool to generate some statistics
+Authors:     Christophe Troestler <Christophe.Troestler@umons.ac.be>,
+             Amir Chaudhry <amirmc@gmail.com>
+Maintainers: Christophe Troestler <Christophe.Troestler@umons.ac.be>
+License:     ISC
+#Homepage:   
+Plugins:     META (0.4), StdFiles (0.4)
+
+Library "metrics"
+  Path:         src/
+  Modules:      Metrics
+  #InternalModules: 
+  BuildDepends: irmin.unix
+  BuildTools:   ocamlbuild
+
+Executable metrics
+  Path:           src/
+  MainIs:         main.ml
+  BuildDepends:   irmin.unix
+  CompiledObject: best
+  BuildTools:     ocamlbuild
+  Install:        true
