@@ -15,7 +15,10 @@ let commits ~project remote_uri =
   let config = Irmin_unix.Irmin_git.config ~root ~bare:true () in
   Irmin.create store config Irmin_unix.task >>= fun t ->
   let upstream = Irmin.remote_uri remote_uri in
-  Irmin.pull_exn (t "Updating") upstream `Update >>= fun () ->
+  catch (fun () -> Irmin.pull_exn (t "Updating") upstream `Update)
+        (fun e -> Lwt_io.printlf "Fail pull %s: %s"
+                               remote_uri (Printexc.to_string e))
+  >>= fun () ->
   Irmin.history (t "history") >>= fun h ->
   let c = Irmin.History.fold_vertex (fun v l -> v :: l) h [] in
   Lwt_list.map_p (fun c -> Irmin.task_of_head (t "task of head") c) c

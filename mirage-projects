@@ -17,6 +17,8 @@ echo "let all = [" >> $ML
 IFS=$'\n'
 for l in `git submodule init`; do
     URL=$(echo "$l" | sed -e 's/^[^(]*(\([^)]\+\)).*/\1/')
+    # Change https into git (https://github.com/mirage/irmin/issues/244)
+    URL=$(echo "$URL" | sed -e 's/https\?:/git:/')
     echo "  \"${URL%.git}.git\";" >> $ML
 done
 echo "]" >> $ML

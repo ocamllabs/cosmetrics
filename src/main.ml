@@ -1,7 +1,7 @@
 open Lwt
 
 let add_stats fh (repo, commits) =
-  Lwt_io.printlf "Stats for %s" repo >>= fun () ->
+  (* Lwt_io.printlf "Stats for %s" repo >>= fun () -> *)
   let summary = Metrics.summary commits in
   Lwt_io.fprintlf fh "<h2>%s</h2>\
                       <p>Total number of commits: %d</p>\
