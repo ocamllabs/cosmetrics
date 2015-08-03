@@ -23,14 +23,16 @@ let main project remotes =
   Lwt_io.printlf "done" >>= fun () ->
 
   Lwt_io.(open_file "mirage.html" ~mode: output) >>= fun fh ->
-  Lwt_io.fprintlf fh "<html>\n\
+  Lwt_io.fprintlf fh "<!DOCTYPE html>\n\
+                      <html xmlns='http://www.w3.org/1999/xhtml'>\n\
                       <head>\
                       <meta content='text/html; charset=utf-8' \
                       http-equiv='Content-Type'/>\
                       </head>\n\
+                      <body>\n\
                       <h1>Stats for %s</h1>" project >>= fun () ->
   Lwt_list.iter_s (add_stats fh) repo_commits >>= fun () ->
-  Lwt_io.fprintlf fh "</html>"
+  Lwt_io.fprintlf fh "</body>\n</html>"
 
 
 let () =
