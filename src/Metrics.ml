@@ -66,13 +66,17 @@ type summary = {
     authors: (string * int) list; (* assoc list of authors to # of commits *)
   }
 
+let is_not_merge h c = History.in_degree h c <= 1
+
 (* Similar to "git summary".  To each committer, associate the number
    of commits. *)
-let summary h =
+let summary ?(merge_commits=false) h =
   let n = History.nb_vertex h in
   let add_commit c m =
     let a = Commit.author c in
-    try MS.add a (MS.find a m + 1) m with Not_found -> MS.add a 1 m in
+    if merge_commits || is_not_merge h c then
+      try MS.add a (MS.find a m + 1) m with Not_found -> MS.add a 1 m
+    else m in
   let m = History.fold_vertex add_commit h MS.empty in
   let authors = MS.fold (fun a v l -> (a, v) :: l) m [] in
   (* Sort so that more frequent contributors come first. *)
