@@ -13,7 +13,7 @@ Library "metrics"
   Path:         src/
   Modules:      Metrics
   #InternalModules: 
-  BuildDepends: irmin.unix
+  BuildDepends: irmin.unix, ocamlgraph, calendar
   BuildTools:   ocamlbuild
 
 Executable metrics
