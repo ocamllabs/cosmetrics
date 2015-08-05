@@ -4,13 +4,14 @@ open CalendarLib
 let add_stats fh (repo, commits) =
   (* Lwt_io.printlf "Stats for %s" repo >>= fun () -> *)
   let summary = Metrics.summary commits in
+  let total = List.fold_left (fun s (_, n) -> s + n) 0 summary in
   Lwt_io.fprintlf fh "<p>Total number of commits: %d</p>\
-                      <ul>" summary.Metrics.n >>= fun () ->
-  let total = float summary.Metrics.n in
+                      <ul>" total >>= fun () ->
+  let total = float total in
   Lwt_list.iter_s (fun (a,n) ->
                    Lwt_io.fprintlf fh "<li>%s: %d (%.1f%%)</li>"
                                    a n (100. *. float n /. total)
-                  ) summary.Metrics.authors >>= fun () ->
+                  ) summary >>= fun () ->
   Lwt_io.fprintlf fh "</ul>"
 
 let c3_headers =

@@ -61,17 +61,11 @@ let history ?(repo_dir="repo") remote_uri =
 
 module MS = Map.Make(String)
 
-type summary = {
-    n: int;                     (* total number of commits *)
-    authors: (string * int) list; (* assoc list of authors to # of commits *)
-  }
-
 let is_not_merge h c = History.in_degree h c <= 1
 
 (* Similar to "git summary".  To each committer, associate the number
    of commits. *)
 let summary ?(merge_commits=false) h =
-  let n = History.nb_vertex h in
   let add_commit c m =
     let a = Commit.author c in
     if merge_commits || is_not_merge h c then
@@ -80,5 +74,4 @@ let summary ?(merge_commits=false) h =
   let m = History.fold_vertex add_commit h MS.empty in
   let authors = MS.fold (fun a v l -> (a, v) :: l) m [] in
   (* Sort so that more frequent contributors come first. *)
-  let authors = List.sort (fun (_,n1) (_,n2) -> compare n2 n1) authors in
-  { n; authors }
+  List.sort (fun (_,n1) (_,n2) -> compare (n2: int) n1) authors
