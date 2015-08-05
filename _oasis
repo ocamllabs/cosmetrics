@@ -19,7 +19,7 @@ Library "metrics"
 Executable metrics
   Path:           src/
   MainIs:         main.ml
-  BuildDepends:   irmin.unix
+  BuildDepends:   lwt.unix, irmin.unix, calendar
   CompiledObject: best
   BuildTools:     ocamlbuild
   Install:        true
