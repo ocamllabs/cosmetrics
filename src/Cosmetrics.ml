@@ -1,4 +1,3 @@
-(** Perform statistics on a set of git repositories. *)
 
 open Lwt
 open CalendarLib
