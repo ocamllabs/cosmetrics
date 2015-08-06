@@ -27,6 +27,14 @@ end
 
 module History = Graph.Persistent.Digraph.ConcreteBidirectional(Commit)
 
+let is_not_merge h c = History.in_degree h c <= 1
+
+let commits ?(merge_commits=false) h =
+  let add_commit c l =
+    if merge_commits || is_not_merge h c then c :: l
+    else l in
+  History.fold_vertex add_commit h []
+
 module M = Map.Make(Irmin.Hash.SHA1)
 
 (* Transform the history from Irmin representation to ours. *)
@@ -60,17 +68,13 @@ let history ?(repo_dir="repo") remote_uri =
 
 module MS = Map.Make(String)
 
-let is_not_merge h c = History.in_degree h c <= 1
-
 (* Similar to "git summary".  To each committer, associate the number
    of commits. *)
-let summary ?(merge_commits=false) h =
-  let add_commit c m =
+let summary commits =
+  let add_commit m c =
     let a = Commit.author c in
-    if merge_commits || is_not_merge h c then
-      try MS.add a (MS.find a m + 1) m with Not_found -> MS.add a 1 m
-    else m in
-  let m = History.fold_vertex add_commit h MS.empty in
+    try MS.add a (MS.find a m + 1) m with Not_found -> MS.add a 1 m in
+  let m = List.fold_left add_commit MS.empty commits in
   let authors = MS.bindings m in
   (* Sort so that more frequent contributors come first. *)
   List.sort (fun (_,n1) (_,n2) -> compare (n2: int) n1) authors
@@ -111,7 +115,7 @@ let rec add_all_weeks d date_max m =
 
 let always_true _ = true
 
-let group_by_week ?(merge_commits=false) ?start ?stop h =
+let group_by_week ?start ?stop commits =
   (* Add the bundary dates to [m], if they are provided. *)
   let after_start, m = match start with
     | Some start -> let start = sunday_of_week start in
@@ -125,14 +129,13 @@ let group_by_week ?(merge_commits=false) ?start ?stop h =
                    (fun d -> Date.compare d stop <= 0), MW.add stop (ref 0) m
     | None -> always_true, m in
   (* Add all (non-merge) commits of the history. *)
-  let add_commit c m =
+  let add_commit m c =
     let d = sunday(Commit.date c) in
-    if (merge_commits || is_not_merge h c)
-       && after_start d && before_stop d then
+    if after_start d && before_stop d then
       try incr(MW.find d m); m
       with Not_found -> MW.add d (ref 0) m
     else m in
-  let m = History.fold_vertex add_commit h m in
+  let m = List.fold_left add_commit m commits in
   let m = MW.map (fun cnt -> !cnt) m in
   (* Make sure all weeks in the range are present, if needed with a
      count of 0 *)

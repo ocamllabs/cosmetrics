@@ -1,7 +1,7 @@
 open Lwt
 open CalendarLib
 
-let add_stats fh (repo, commits) =
+let add_stats fh repo commits =
   (* Lwt_io.printlf "Stats for %s" repo >>= fun () -> *)
   let summary = Cosmetrics.summary commits in
   let total = List.fold_left (fun s (_, n) -> s + n) 0 summary in
@@ -34,7 +34,7 @@ let c3_headers =
 
 let graph_no = ref 0
 
-let graph_commits fh (repo, commits) =
+let graph_commits fh repo commits =
   let l = Cosmetrics.group_by_week commits in
   let name = Filename.basename repo in
   let name = try Filename.chop_extension name with _ -> name in
@@ -63,7 +63,11 @@ let graph_commits fh (repo, commits) =
                        axis: {
                          x: {
                            type: 'timeseries',
-                           tick: { format: '%%Y-%%m' }
+                           tick: {
+                             format: '%%Y-%%m',
+                             fit: true,
+                             count: 20,
+                           }
                          }
                        }
                      })\n\
@@ -91,10 +95,11 @@ let main project remotes =
                       </head>\n\
                       <body>\n\
                       <h1>Stats for %s</h1>" c3_headers project >>= fun () ->
-  let process ((repo, _) as r) =
+  let process (repo, hist) =
     Lwt_io.fprintlf fh "<h2 style='clear: both'>%s</h2>" repo >>= fun () ->
-    graph_commits fh r >>= fun () ->
-    add_stats fh r
+    let commits = Cosmetrics.commits hist in
+    graph_commits fh repo commits >>= fun () ->
+    add_stats fh repo commits
   in
   Lwt_list.iter_s process repo_commits >>= fun () ->
   Lwt_io.fprintlf fh "</body>\n</html>"
