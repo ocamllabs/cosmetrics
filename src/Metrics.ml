@@ -72,6 +72,71 @@ let summary ?(merge_commits=false) h =
       try MS.add a (MS.find a m + 1) m with Not_found -> MS.add a 1 m
     else m in
   let m = History.fold_vertex add_commit h MS.empty in
-  let authors = MS.fold (fun a v l -> (a, v) :: l) m [] in
+  let authors = MS.bindings m in
   (* Sort so that more frequent contributors come first. *)
   List.sort (fun (_,n1) (_,n2) -> compare (n2: int) n1) authors
+
+
+let day_1 = Date.Period.day (-1)
+let day_2 = Date.Period.day (-2)
+let day_3 = Date.Period.day (-3)
+let day_4 = Date.Period.day (-4)
+let day_5 = Date.Period.day (-5)
+let day_6 = Date.Period.day (-6)
+
+(* Return a date [d] where the day was changed to be the Sunday of the
+   week (i.e. the preceding Sunday). *)
+let sunday_of_week d =
+  match Date.day_of_week d with
+  | Date.Sun -> d
+  | Date.Mon -> Date.add d day_1
+  | Date.Tue -> Date.add d day_2
+  | Date.Wed -> Date.add d day_3
+  | Date.Thu -> Date.add d day_4
+  | Date.Fri -> Date.add d day_5
+  | Date.Sat -> Date.add d day_6
+
+let sunday d = sunday_of_week(Calendar.to_date d)
+
+module MW = Map.Make(Date)
+
+let one_week = Date.Period.week 1
+
+(* Add the date [d] and all subsequent weeks until [date_max]
+   (excluded) to [m]. *)
+let rec add_all_weeks d date_max m =
+  if Date.compare d date_max < 0 then
+    let m = if MW.mem d m then m else MW.add d 0 m in
+    add_all_weeks (Date.add d one_week) date_max m
+  else m
+
+let always_true _ = true
+
+let group_by_week ?(merge_commits=false) ?start ?stop h =
+  (* Add the bundary dates to [m], if they are provided. *)
+  let after_start, m = match start with
+    | Some start -> let start = sunday_of_week start in
+                    (fun d -> Date.compare d start >= 0),
+                    MW.add start (ref 0) MW.empty (* => date in map *)
+    | None -> always_true, MW.empty in
+  let before_stop, m = match stop with
+    | Some stop -> let stop = sunday_of_week stop in
+                   if not(after_start stop) then
+                     invalid_arg "Metrics.group_by_week: empty range";
+                   (fun d -> Date.compare d stop <= 0), MW.add stop (ref 0) m
+    | None -> always_true, m in
+  (* Add all (non-merge) commits of the history. *)
+  let add_commit c m =
+    let d = sunday(Commit.date c) in
+    if (merge_commits || is_not_merge h c)
+       && after_start d && before_stop d then
+      try incr(MW.find d m); m
+      with Not_found -> MW.add d (ref 0) m
+    else m in
+  let m = History.fold_vertex add_commit h m in
+  let m = MW.map (fun cnt -> !cnt) m in
+  (* Make sure all weeks in the range are present, if needed with a
+     count of 0 *)
+  let date_min, _ = MW.min_binding m in
+  let date_max, _ = MW.max_binding m in
+  MW.bindings (add_all_weeks (Date.add date_min one_week) date_max m)
