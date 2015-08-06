@@ -68,20 +68,30 @@ let history ?(repo_dir="repo") remote_uri =
 
 module StringMap = Map.Make(String)
 
-(* Similar to "git summary".  To each committer, associate the number
-   of commits. *)
-let summary_map commits =
-  let add_commit m c =
-    let a = Commit.author c in
-    try StringMap.add a (StringMap.find a m + 1) m
-    with Not_found -> StringMap.add a 1 m in
-  List.fold_left add_commit StringMap.empty commits
+module Summary = struct
+  type t = {
+      n: int;
+      pct: float; (* in the interval [0,100] *)
+    }
 
-let summary commits =
-  let authors = StringMap.bindings (summary_map commits) in
-  (* Sort so that more frequent contributors come first. *)
-  List.sort (fun (_,n1) (_,n2) -> compare (n2: int) n1) authors
+  (* Similar to "git summary".  To each committer, associate the number
+     of commits. *)
+  let make_map commits =
+    let total = ref 0. in
+    let add_commit m c =
+      total := !total +. 1.;
+      let a = Commit.author c in
+      try StringMap.add a (StringMap.find a m + 1) m
+      with Not_found -> StringMap.add a 1 m in
+    let m = List.fold_left add_commit StringMap.empty commits in
+    let pct = 100. /. !total in
+    StringMap.map (fun n -> { n;  pct = float n *. pct }) m
 
+  let make commits =
+    let authors = StringMap.bindings (make_map commits) in
+    (* Sort so that more frequent contributors come first. *)
+    List.sort (fun (_,s1) (_,s2) -> compare s2.n s1.n) authors
+end
 
 let day_1 = Date.Period.day (-1)
 let day_2 = Date.Period.day (-2)

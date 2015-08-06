@@ -33,9 +33,16 @@ val history : ?repo_dir: string -> string -> History.t Lwt.t
     not to fetch again the repository).  The sudirectory name is based
     on the basename of [remote_uri]. *)
 
-val summary : Commit.t list -> (string * int) list
+module Summary : sig
+  type t = {
+      n: int;     (** number of commits *)
+      pct: float; (** percentage of commits (in [0.] .. [100.]. *)
+    }
 
-val summary_map : Commit.t list -> int StringMap.t
+  val make : Commit.t list -> (string * t) list
+
+  val make_map : Commit.t list -> t StringMap.t
+end
 
 val group_by_week : ?start: Date.t -> ?stop: Date.t ->
                     Commit.t list -> (Date.t * int) list
