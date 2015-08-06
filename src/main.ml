@@ -64,7 +64,7 @@ let graph_commits fh ~start ~stop repo commits =
                          },
                          colors: {
                            total: '#336600',
-                           occasional: '#99FF66',
+                           occasional: '#CC6600',
                          }
                        },
                        axis: {
@@ -145,6 +145,8 @@ let main project remotes =
     graph_commits fh ~start ~stop repo commits >>= fun () ->
     add_stats fh repo commits
   in
+  let all_commits = List.concat (List.map snd repo_commits) in
+  process ("All_repositories", all_commits) >>= fun () ->
   Lwt_list.iter_s process repo_commits >>= fun () ->
   Lwt_io.fprintlf fh "</body>\n</html>"
 
