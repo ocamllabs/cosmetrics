@@ -27,48 +27,25 @@ let c3_headers =
    div.graph {
    float: right;
    margin-right: 2ex;
-   width: 50%;
+   width: 60%;
    height: 30ex;
    }
    </style>"
 
-module Bucket = struct
-  type t = int * int
-  let compare ((y1, w1): t) ((y2, w2): t) =
-    let cy = compare y1 y2 in
-    if cy = 0 then compare w1 w2 else cy
-
-  let int_of_month =
-    let open Calendar in
-    function
-    | Jan -> 1 | Feb -> 2 | Mar -> 3 | Apr -> 4 | May -> 5 | Jun -> 6
-    | Jul -> 7 | Aug -> 8 | Sep -> 9 | Oct -> 10 | Nov -> 11 | Dec -> 12
-
-  let of_commit c :t =
-    let d = Metrics.Commit.date c in
-    (Calendar.year d, int_of_month(Calendar.month d))
-
-  let to_string (y, w) =
-    Printf.sprintf "'%d-%02d-%02d'" y w 1
-end
-
-module MW = Map.Make(Bucket)
-
 let graph_no = ref 0
 
 let graph_commits fh (repo, commits) =
-  let add_week c m =
-    let key = Bucket.of_commit c in
-    try MW.add key (MW.find key m + 1) m with _ -> MW.add key 1 m in
-  let m = Metrics.History.fold_vertex add_week commits MW.empty in
+  let l = Metrics.group_by_week commits in
   let name = Filename.basename repo in
   let name = try Filename.chop_extension name with _ -> name in
-  Lwt_io.fprintf fh "<div id='%s' class='graph'></div>\n" name >>= fun () ->
-  let x, y = MW.fold (fun key cnt (x, y) ->
-                      (Bucket.to_string key :: x, string_of_int cnt :: y)
-                     ) m ([], []) in
+  let add_date (x,y) (date, cnt) =
+    (("'" ^ Printer.Date.to_string date ^ "'") :: x,
+     string_of_int cnt :: y) in
+  (* The dates will be in reverse order but c3 does not care. *)
+  let x, y = List.fold_left add_date ([], []) l in
   let x = String.concat ", " x in
   let y = String.concat ", " y in
+  Lwt_io.fprintf fh "<div id='%s' class='graph'></div>\n" name >>= fun () ->
   incr graph_no;
   Lwt_io.fprintf fh "<script type='text/javascript'>
                      var chart = c3.generate({
