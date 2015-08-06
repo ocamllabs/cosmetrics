@@ -13,6 +13,9 @@ module Commit : sig
   val compare : t -> t -> int
   val hash : t -> int
   val equal : t -> t -> bool
+
+  val group : [`Week | `Month] -> ?start: Date.t -> ?stop: Date.t ->
+              t list -> (Date.t * int) list
 end
 
 (** DAG of commits. *)
@@ -43,6 +46,3 @@ module Summary : sig
 
   val make_map : Commit.t list -> t StringMap.t
 end
-
-val group_by_week : ?start: Date.t -> ?stop: Date.t ->
-                    Commit.t list -> (Date.t * int) list

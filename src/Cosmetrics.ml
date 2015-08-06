@@ -2,6 +2,76 @@
 open Lwt
 open CalendarLib
 
+let day_1 = Date.Period.day (-1)
+let day_2 = Date.Period.day (-2)
+let day_3 = Date.Period.day (-3)
+let day_4 = Date.Period.day (-4)
+let day_5 = Date.Period.day (-5)
+let day_6 = Date.Period.day (-6)
+
+(* Return a date [d] where the day was changed to be the Sunday of the
+   week (i.e. the preceding Sunday). *)
+let sunday_of_week d =
+  match Date.day_of_week d with
+  | Date.Sun -> d
+  | Date.Mon -> Date.add d day_1
+  | Date.Tue -> Date.add d day_2
+  | Date.Wed -> Date.add d day_3
+  | Date.Thu -> Date.add d day_4
+  | Date.Fri -> Date.add d day_5
+  | Date.Sat -> Date.add d day_6
+
+let first_day_of_month d =
+  Date.make (Date.year d) (Date.int_of_month (Date.month d)) 1
+
+module MW = Map.Make(Date)
+
+(* Add the date [d] and all subsequent weeks until [date_max]
+   (excluded) to [m]. *)
+let rec add_all_offsets offset d date_max m =
+  if Date.compare d date_max < 0 then
+    let m = if MW.mem d m then m else MW.add d 0 m in
+    add_all_offsets offset (offset d) date_max m
+  else m
+
+let always_true _ = true
+
+let group_by_gen ~date_for_period ~date_of_value ~offset
+                 ?start ?stop values =
+  (* Add the bundary dates to [m], if they are provided. *)
+  let after_start, m = match start with
+    | Some start -> let start = date_for_period start in
+                    (fun d -> Date.compare d start >= 0),
+                    MW.add start (ref 0) MW.empty (* => date in map *)
+    | None -> always_true, MW.empty in
+  let before_stop, m = match stop with
+    | Some stop -> let stop = date_for_period stop in
+                   if not(after_start stop) then
+                     invalid_arg "Cosmetrics.group_by_week: empty range";
+                   (fun d -> Date.compare d stop <= 0), MW.add stop (ref 0) m
+    | None -> always_true, m in
+  let add_value m v =
+    let d = date_for_period(date_of_value v) in
+    if after_start d && before_stop d then
+      try incr(MW.find d m); m
+      with Not_found -> MW.add d (ref 0) m
+    else m in
+  let m = List.fold_left add_value m values in
+  let m = MW.map (fun cnt -> !cnt) m in
+  (* Make sure all weeks in the range are present, if needed with a
+     count of 0 *)
+  let date_min, _ = MW.min_binding m in
+  let date_max, _ = MW.max_binding m in
+  MW.bindings (add_all_offsets offset (offset date_min) date_max m)
+
+
+let one_week = Date.Period.week 1
+let add_one_week d = Date.add d one_week
+
+let add_one_month d =
+  Date.make (Date.year d) (1 + Date.int_of_month (Date.month d))
+            (Date.day_of_month d)
+
 module Commit = struct
   type t = {
       date: Calendar.t;
@@ -23,11 +93,19 @@ module Commit = struct
     let date = Calendar.from_unixfloat t in
     let author = Irmin.Task.owner task in
     return { date; author; sha1 = head }
+
+  let group offset =
+    let date_for_period, offset = match offset with
+      | `Week -> sunday_of_week, add_one_week
+      | `Month -> first_day_of_month, add_one_month in
+    group_by_gen ~date_for_period
+                 ~date_of_value:(fun c -> Calendar.to_date(date c))
+                 ~offset
 end
 
 module History = Graph.Persistent.Digraph.ConcreteBidirectional(Commit)
 
-let is_not_merge h c = History.in_degree h c <= 1
+let is_not_merge h c = History.out_degree h c <= 1
 
 let commits ?(merge_commits=false) h =
   let add_commit c l =
@@ -92,66 +170,3 @@ module Summary = struct
     (* Sort so that more frequent contributors come first. *)
     List.sort (fun (_,s1) (_,s2) -> compare s2.n s1.n) authors
 end
-
-let day_1 = Date.Period.day (-1)
-let day_2 = Date.Period.day (-2)
-let day_3 = Date.Period.day (-3)
-let day_4 = Date.Period.day (-4)
-let day_5 = Date.Period.day (-5)
-let day_6 = Date.Period.day (-6)
-
-(* Return a date [d] where the day was changed to be the Sunday of the
-   week (i.e. the preceding Sunday). *)
-let sunday_of_week d =
-  match Date.day_of_week d with
-  | Date.Sun -> d
-  | Date.Mon -> Date.add d day_1
-  | Date.Tue -> Date.add d day_2
-  | Date.Wed -> Date.add d day_3
-  | Date.Thu -> Date.add d day_4
-  | Date.Fri -> Date.add d day_5
-  | Date.Sat -> Date.add d day_6
-
-let sunday d = sunday_of_week(Calendar.to_date d)
-
-module MW = Map.Make(Date)
-
-let one_week = Date.Period.week 1
-
-(* Add the date [d] and all subsequent weeks until [date_max]
-   (excluded) to [m]. *)
-let rec add_all_weeks d date_max m =
-  if Date.compare d date_max < 0 then
-    let m = if MW.mem d m then m else MW.add d 0 m in
-    add_all_weeks (Date.add d one_week) date_max m
-  else m
-
-let always_true _ = true
-
-let group_by_week ?start ?stop commits =
-  (* Add the bundary dates to [m], if they are provided. *)
-  let after_start, m = match start with
-    | Some start -> let start = sunday_of_week start in
-                    (fun d -> Date.compare d start >= 0),
-                    MW.add start (ref 0) MW.empty (* => date in map *)
-    | None -> always_true, MW.empty in
-  let before_stop, m = match stop with
-    | Some stop -> let stop = sunday_of_week stop in
-                   if not(after_start stop) then
-                     invalid_arg "Cosmetrics.group_by_week: empty range";
-                   (fun d -> Date.compare d stop <= 0), MW.add stop (ref 0) m
-    | None -> always_true, m in
-  (* Add all (non-merge) commits of the history. *)
-  let add_commit m c =
-    let d = sunday(Commit.date c) in
-    if after_start d && before_stop d then
-      try incr(MW.find d m); m
-      with Not_found -> MW.add d (ref 0) m
-    else m in
-  let m = List.fold_left add_commit m commits in
-  let m = MW.map (fun cnt -> !cnt) m in
-  (* Make sure all weeks in the range are present, if needed with a
-     count of 0 *)
-  let date_min, _ = MW.min_binding m in
-  let date_max, _ = MW.max_binding m in
-  MW.bindings (add_all_weeks (Date.add date_min one_week) date_max m)
