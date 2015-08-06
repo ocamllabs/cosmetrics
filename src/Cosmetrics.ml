@@ -122,7 +122,7 @@ let group_by_week ?(merge_commits=false) ?start ?stop h =
   let before_stop, m = match stop with
     | Some stop -> let stop = sunday_of_week stop in
                    if not(after_start stop) then
-                     invalid_arg "Metrics.group_by_week: empty range";
+                     invalid_arg "Cosmetrics.group_by_week: empty range";
                    (fun d -> Date.compare d stop <= 0), MW.add stop (ref 0) m
     | None -> always_true, m in
   (* Add all (non-merge) commits of the history. *)

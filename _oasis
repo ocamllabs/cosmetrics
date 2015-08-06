@@ -1,25 +1,32 @@
 OASISFormat: 0.4
-Name:        metrics
+Name:        cosmetrics
 Version:     0.0.1
-Synopsis:    Tool to generate some statistics
+Synopsis:    Code-source metrics
 Authors:     Christophe Troestler <Christophe.Troestler@umons.ac.be>,
              Amir Chaudhry <amirmc@gmail.com>
 Maintainers: Christophe Troestler <Christophe.Troestler@umons.ac.be>
 License:     ISC
-#Homepage:   
+Homepage:    https://github.com/ocamllabs/cosmetrics
 Plugins:     META (0.4), StdFiles (0.4)
 
-Library "metrics"
+Library "cosmetrics"
   Path:         src/
-  Modules:      Metrics
+  Modules:      Cosmetrics
   #InternalModules: 
   BuildDepends: irmin.unix, ocamlgraph, calendar
   BuildTools:   ocamlbuild
 
-Executable metrics
+Executable cosmetrics
   Path:           src/
   MainIs:         main.ml
-  BuildDepends:   lwt.unix, irmin.unix, calendar
+  BuildDepends:   cosmetrics, lwt.unix, irmin.unix, calendar
   CompiledObject: best
   BuildTools:     ocamlbuild
   Install:        true
+
+
+
+SourceRepository master
+  Type:     git
+  Location: https://github.com/ocamllabs/cosmetrics.git
+  Browser:  https://github.com/ocamllabs/cosmetrics

@@ -3,7 +3,7 @@ open CalendarLib
 
 let add_stats fh (repo, commits) =
   (* Lwt_io.printlf "Stats for %s" repo >>= fun () -> *)
-  let summary = Metrics.summary commits in
+  let summary = Cosmetrics.summary commits in
   let total = List.fold_left (fun s (_, n) -> s + n) 0 summary in
   Lwt_io.fprintlf fh "<p>Total number of commits: %d</p>\
                       <ul>" total >>= fun () ->
@@ -35,7 +35,7 @@ let c3_headers =
 let graph_no = ref 0
 
 let graph_commits fh (repo, commits) =
-  let l = Metrics.group_by_week commits in
+  let l = Cosmetrics.group_by_week commits in
   let name = Filename.basename repo in
   let name = try Filename.chop_extension name with _ -> name in
   let add_date (x,y) (date, cnt) =
@@ -75,7 +75,7 @@ let main project remotes =
   Lwt_unix.chdir project >>= fun () ->
   Lwt_io.printf "Updating repositories... " >>= fun () ->
   Lwt_list.map_p (fun repo ->
-                  Metrics.history repo >>= fun commits ->
+                  Cosmetrics.history repo >>= fun commits ->
                   return (repo, commits)
                  ) remotes
   >>= fun repo_commits ->
