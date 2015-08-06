@@ -18,6 +18,8 @@ end
 (** DAG of commits. *)
 module History : Graph.Sig.P  with type V.t = Commit.t
 
+module StringMap : Map.S  with type key = string
+
 val commits : ?merge_commits: bool -> History.t -> Commit.t list
 (** Return the commits in the history.  Unless [merge_commits] is
     [true], the merge commits are not returned (this is the default). *)
@@ -32,6 +34,8 @@ val history : ?repo_dir: string -> string -> History.t Lwt.t
     on the basename of [remote_uri]. *)
 
 val summary : Commit.t list -> (string * int) list
+
+val summary_map : Commit.t list -> int StringMap.t
 
 val group_by_week : ?start: Date.t -> ?stop: Date.t ->
                     Commit.t list -> (Date.t * int) list

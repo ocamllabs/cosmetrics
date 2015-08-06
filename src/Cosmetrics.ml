@@ -66,16 +66,19 @@ let history ?(repo_dir="repo") remote_uri =
   Irmin.history (t "history") >>= fun h ->
   map_history t h
 
-module MS = Map.Make(String)
+module StringMap = Map.Make(String)
 
 (* Similar to "git summary".  To each committer, associate the number
    of commits. *)
-let summary commits =
+let summary_map commits =
   let add_commit m c =
     let a = Commit.author c in
-    try MS.add a (MS.find a m + 1) m with Not_found -> MS.add a 1 m in
-  let m = List.fold_left add_commit MS.empty commits in
-  let authors = MS.bindings m in
+    try StringMap.add a (StringMap.find a m + 1) m
+    with Not_found -> StringMap.add a 1 m in
+  List.fold_left add_commit StringMap.empty commits
+
+let summary commits =
+  let authors = StringMap.bindings (summary_map commits) in
   (* Sort so that more frequent contributors come first. *)
   List.sort (fun (_,n1) (_,n2) -> compare (n2: int) n1) authors
 
