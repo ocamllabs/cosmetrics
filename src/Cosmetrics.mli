@@ -14,8 +14,8 @@ module Commit : sig
   val hash : t -> int
   val equal : t -> t -> bool
 
-  val group : [`Week | `Month] -> ?start: Date.t -> ?stop: Date.t ->
-              t list -> (Date.t * int) list
+  val timeseries : [`Week | `Month] -> ?start: Date.t -> ?stop: Date.t ->
+                   t list -> (Date.t * int) list
 end
 
 (** DAG of commits. *)

@@ -41,8 +41,8 @@ let graph_commits fh ~start ~stop repo commits =
   let is_occasional c =
     not(is_main_author Cosmetrics.(StringMap.find (Commit.author c) m)) in
   let occasionals = List.filter is_occasional commits in
-  let l1 = Cosmetrics.Commit.group `Month ~start ~stop commits in
-  let l2 = Cosmetrics.Commit.group `Month ~start ~stop occasionals in
+  let l1 = Cosmetrics.Commit.timeseries `Month ~start ~stop commits in
+  let l2 = Cosmetrics.Commit.timeseries `Month ~start ~stop occasionals in
   let x, y1 = string_of_groups l1 in
   let _, y2 = string_of_groups l2 in
   let name = Filename.basename repo in

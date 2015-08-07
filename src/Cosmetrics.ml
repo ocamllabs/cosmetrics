@@ -36,8 +36,8 @@ let rec add_all_offsets offset d date_max m =
 
 let always_true _ = true
 
-let group_by_gen ~date_for_period ~date_of_value ~offset
-                 ?start ?stop values =
+let timeseries_gen ~date_for_period ~date_of_value ~offset
+                   ?start ?stop values =
   (* Add the bundary dates to [m], if they are provided. *)
   let after_start, m = match start with
     | Some start -> let start = date_for_period start in
@@ -47,7 +47,7 @@ let group_by_gen ~date_for_period ~date_of_value ~offset
   let before_stop, m = match stop with
     | Some stop -> let stop = date_for_period stop in
                    if not(after_start stop) then
-                     invalid_arg "Cosmetrics.group_by_week: empty range";
+                     invalid_arg "Cosmetrics.*timeseries: empty range";
                    (fun d -> Date.compare d stop <= 0), MW.add stop (ref 0) m
     | None -> always_true, m in
   let add_value m v =
@@ -94,13 +94,13 @@ module Commit = struct
     let author = Irmin.Task.owner task in
     return { date; author; sha1 = head }
 
-  let group offset =
+  let timeseries offset =
     let date_for_period, offset = match offset with
       | `Week -> sunday_of_week, add_one_week
       | `Month -> first_day_of_month, add_one_month in
-    group_by_gen ~date_for_period
-                 ~date_of_value:(fun c -> Calendar.to_date(date c))
-                 ~offset
+    timeseries_gen ~date_for_period
+                   ~date_of_value:(fun c -> Calendar.to_date(date c))
+                   ~offset
 end
 
 module History = Graph.Persistent.Digraph.ConcreteBidirectional(Commit)
