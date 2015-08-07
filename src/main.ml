@@ -19,22 +19,21 @@ let add_stats html repo commits =
             ) summary;
   H.printf html "</ul>"
 
-let graph_commits html ~start ~stop repo commits =
+let graph html ?(per=`Month) ~start ~stop repo commits =
   let colors = [0x336600; 0xCC6600] in
   let m = Cosmetrics.Summary.make_map commits in
   let is_occasional c =
     not(is_main_author Cosmetrics.(StringMap.find (Commit.author c) m)) in
   let occasionals = List.filter is_occasional commits in
-  let l1 = Cosmetrics.Commit.timeseries `Month ~start ~stop commits in
-  let l2 = Cosmetrics.Commit.timeseries `Month ~start ~stop occasionals in
+  let l1 = Cosmetrics.Commit.timeseries per ~start ~stop commits in
+  let l2 = Cosmetrics.Commit.timeseries per ~start ~stop occasionals in
   let x = List.map fst l1 in
   let y1 = List.map (fun (_, cnt) -> float cnt) l1 in
   let y2 = List.map (fun (_, cnt) -> float cnt) l2 in
   H.timeseries html ~x [("Total", y1); ("Occasional", y2)] ~colors
                ~ylabel:"# commits";
-  let l1 = Cosmetrics.Commit.timeseries_author `Month ~start ~stop commits in
-  let l2 = Cosmetrics.Commit.timeseries_author
-             `Month ~start ~stop occasionals in
+  let l1 = Cosmetrics.Commit.timeseries_author per ~start ~stop commits in
+  let l2 = Cosmetrics.Commit.timeseries_author per ~start ~stop occasionals in
   let y1 = List.map (fun (_, cnt) -> float cnt) l1 in
   let y2 = List.map (fun (_, cnt) -> float cnt) l2 in
   H.timeseries html ~x [("Total", y1); ("Occasional", y2)] ~colors
@@ -92,7 +91,7 @@ let main project remotes =
     | [] -> invalid_arg "Empty list of repositories" in
   let process (repo, commits) =
     H.printf html "<h2 style='clear: both'>%s</h2>" repo;
-    graph_commits html ~start ~stop repo commits;
+    graph html ~start ~stop repo commits;
     add_stats html repo commits
   in
   let all_commits = List.concat (List.map snd repo_commits) in
