@@ -28,33 +28,38 @@ module MW = Map.Make(Date)
 
 (* Add the date [d] and all subsequent weeks until [date_max]
    (excluded) to [m]. *)
-let rec add_all_offsets offset d date_max m =
+let rec add_all_offsets offset d date_max m ~empty_bucket =
   if Date.compare d date_max < 0 then
-    let m = if MW.mem d m then m else MW.add d 0 m in
-    add_all_offsets offset (offset d) date_max m
+    let m = if MW.mem d m then m else MW.add d empty_bucket m in
+    add_all_offsets offset (offset d) date_max m ~empty_bucket
   else m
 
 let always_true _ = true
 
 let timeseries_gen ~date_for_period ~date_of_value ~offset
+                   ~empty_bucket ~(update: _ ref -> unit)
                    ?start ?stop values =
   (* Add the bundary dates to [m], if they are provided. *)
   let after_start, m = match start with
     | Some start -> let start = date_for_period start in
                     (fun d -> Date.compare d start >= 0),
-                    MW.add start (ref 0) MW.empty (* => date in map *)
+                    (* Make sure this date is in the map: *)
+                    MW.add start (ref empty_bucket) MW.empty
     | None -> always_true, MW.empty in
   let before_stop, m = match stop with
     | Some stop -> let stop = date_for_period stop in
                    if not(after_start stop) then
                      invalid_arg "Cosmetrics.*timeseries: empty range";
-                   (fun d -> Date.compare d stop <= 0), MW.add stop (ref 0) m
+                   (fun d -> Date.compare d stop <= 0),
+                   MW.add stop (ref empty_bucket) m
     | None -> always_true, m in
   let add_value m v =
     let d = date_for_period(date_of_value v) in
     if after_start d && before_stop d then
-      try incr(MW.find d m); m
-      with Not_found -> MW.add d (ref 1) m
+      try update(MW.find d m); m
+      with Not_found -> let bucket = ref empty_bucket in
+                        update bucket;
+                        MW.add d bucket m
     else m in
   let m = List.fold_left add_value m values in
   let m = MW.map (fun cnt -> !cnt) m in
@@ -62,7 +67,8 @@ let timeseries_gen ~date_for_period ~date_of_value ~offset
      count of 0 *)
   let date_min, _ = MW.min_binding m in
   let date_max, _ = MW.max_binding m in
-  MW.bindings (add_all_offsets offset (offset date_min) date_max m)
+  MW.bindings (add_all_offsets offset (offset date_min) date_max m
+                               ~empty_bucket)
 
 
 let one_week = Date.Period.week 1
@@ -101,6 +107,7 @@ module Commit = struct
     timeseries_gen ~date_for_period
                    ~date_of_value:(fun c -> Calendar.to_date(date c))
                    ~offset
+                   ~empty_bucket:0  ~update:incr
 end
 
 module History = Graph.Persistent.Digraph.ConcreteBidirectional(Commit)
