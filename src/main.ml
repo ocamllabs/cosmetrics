@@ -19,6 +19,12 @@ let add_stats html repo commits =
             ) summary;
   H.printf html "</ul>"
 
+let rec cummulative_loop prev = function
+  | [] -> []
+  | x :: tl -> let prev = prev +. x in prev :: cummulative_loop prev tl
+
+let cummulative l = cummulative_loop 0. l
+
 let graph html ?(per=`Month) ~start ~stop repo commits =
   let colors = [0x336600; 0xCC6600] in
   let m = Cosmetrics.Summary.make_map commits in
@@ -32,6 +38,9 @@ let graph html ?(per=`Month) ~start ~stop repo commits =
   let y2 = List.map (fun (_, cnt) -> float cnt) l2 in
   H.timeseries html ~x [("Total", y1); ("Occasional", y2)] ~colors
                ~ylabel:"# commits";
+  H.timeseries html ~x [("∑ total", cummulative y1);
+                        ("∑ Occasional", cummulative y2)]
+               ~colors ~ylabel:"# commits";
   let l1 = Cosmetrics.Commit.timeseries_author per ~start ~stop commits in
   let l2 = Cosmetrics.Commit.timeseries_author per ~start ~stop occasionals in
   let y1 = List.map (fun (_, cnt) -> float cnt) l1 in
