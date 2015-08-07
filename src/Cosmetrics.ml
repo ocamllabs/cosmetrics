@@ -36,9 +36,19 @@ let rec add_all_offsets offset d date_max m ~empty_bucket =
 
 let always_true _ = true
 
-let timeseries_gen ~date_for_period ~date_of_value ~offset
+let one_week = Date.Period.week 1
+let add_one_week d = Date.add d one_week
+
+let add_one_month d =
+  Date.make (Date.year d) (1 + Date.int_of_month (Date.month d))
+            (Date.day_of_month d)
+
+let timeseries_gen offset ~date_of_value
                    ~empty_bucket ~(update: _ ref -> unit)
                    ?start ?stop values =
+  let date_for_period, offset = match offset with
+    | `Week -> sunday_of_week, add_one_week
+    | `Month -> first_day_of_month, add_one_month in
   (* Add the bundary dates to [m], if they are provided. *)
   let after_start, m = match start with
     | Some start -> let start = date_for_period start in
@@ -71,13 +81,6 @@ let timeseries_gen ~date_for_period ~date_of_value ~offset
                                ~empty_bucket)
 
 
-let one_week = Date.Period.week 1
-let add_one_week d = Date.add d one_week
-
-let add_one_month d =
-  Date.make (Date.year d) (1 + Date.int_of_month (Date.month d))
-            (Date.day_of_month d)
-
 module Commit = struct
   type t = {
       date: Calendar.t;
@@ -101,12 +104,7 @@ module Commit = struct
     return { date; author; sha1 = head }
 
   let timeseries offset =
-    let date_for_period, offset = match offset with
-      | `Week -> sunday_of_week, add_one_week
-      | `Month -> first_day_of_month, add_one_month in
-    timeseries_gen ~date_for_period
-                   ~date_of_value:(fun c -> Calendar.to_date(date c))
-                   ~offset
+    timeseries_gen offset ~date_of_value:(fun c -> Calendar.to_date(date c))
                    ~empty_bucket:0  ~update:incr
 end
 
