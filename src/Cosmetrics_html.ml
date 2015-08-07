@@ -4,6 +4,22 @@
 open Lwt
 open CalendarLib
 
+let escape_single_quote s =
+  let n = ref 0 in (* number of quotes *)
+  for i = 0 to String.length s - 1 do
+    if String.unsafe_get s i = '\'' then incr n
+  done;
+  if !n = 0 then s
+  else (
+    let b = Buffer.create (!n + String.length s) in
+    for i = 0 to String.length s - 1 do
+      let c = String.unsafe_get s i in
+      if c = '\'' then Buffer.add_char b '\\';
+      Buffer.add_char b c
+    done;
+    Buffer.contents b
+  )
+
 type html = {
     mutable style: string list;
     mutable body: Buffer.t;
@@ -42,8 +58,8 @@ let timeseries html ~x ~colors ys =
   List.iteri add_y ys;
   print html "],\n\
               names: {\n";
-  (* FIXME: should escape single quotes: *)
-  List.iteri (fun i (name, _) -> printf html "data%d: '%s',\n" i name) ys;
+  List.iteri (fun i (name, _) -> printf html "data%d: '%s',\n"
+                                      i (escape_single_quote name)) ys;
   print html "},\n\
               types: {\n";
   List.iteri (fun i _ -> printf html "data%d: 'area',\n" i) ys;
