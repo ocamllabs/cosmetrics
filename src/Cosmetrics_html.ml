@@ -36,9 +36,22 @@ let print html s = Buffer.add_string html.body s
 
 let printf html = Printf.ksprintf (print html)
 
-let timeseries html ?(xlabel="") ?(ylabel="") ~x ~colors ys =
-  if List.length colors < List.length ys then
+let string_of_types = function
+  | `Line -> "line"
+  | `Area -> "area"
+  | `Step -> "step"
+  | `Area_step -> "area-step"
+
+let timeseries html ?(xlabel="") ?(ylabel="") ?(ty=`Area) ?tys ~x ~colors ys =
+  let nb_of_y = List.length ys in
+  if List.length colors < nb_of_y then
     invalid_arg "Cosmetrics_html.timeseries: not enough colors";
+  let types = match tys with
+    | Some ty ->
+       if List.length ty < nb_of_y then
+         invalid_arg "Cosmetrics_html.timeseries: not enough types";
+       ty
+    | None -> List.map (fun _ -> ty) ys in
   (* FIXME: should check that |x| the length of all y's. *)
   html.i <- html.i + 1;
   printf html "<div id=\"cosmetrics%d\" class=\"graph\"></div>\n" html.i;
@@ -62,7 +75,8 @@ let timeseries html ?(xlabel="") ?(ylabel="") ~x ~colors ys =
                                       i (escape_single_quote name)) ys;
   print html "},\n\
               types: {\n";
-  List.iteri (fun i _ -> printf html "data%d: 'area',\n" i) ys;
+  List.iteri (fun i ty -> printf html "data%d: '%s',\n" i (string_of_types ty))
+             types;
   print html "},\n";
   print html "colors: {\n";
   List.iteri (fun i c -> printf html "data%d: '#%06X',\n" i c) colors;
