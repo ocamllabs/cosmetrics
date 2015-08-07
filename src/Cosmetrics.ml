@@ -44,7 +44,7 @@ let add_one_month d =
             (Date.day_of_month d)
 
 let timeseries_gen offset ~date_of_value
-                   ~empty_bucket ~(update: _ ref -> unit)
+                   ~empty_bucket ~update
                    ?start ?stop values =
   let date_for_period, offset = match offset with
     | `Week -> sunday_of_week, add_one_week
@@ -66,9 +66,9 @@ let timeseries_gen offset ~date_of_value
   let add_value m v =
     let d = date_for_period(date_of_value v) in
     if after_start d && before_stop d then
-      try update(MW.find d m); m
+      try update (MW.find d m) v; m
       with Not_found -> let bucket = ref empty_bucket in
-                        update bucket;
+                        update bucket v;
                         MW.add d bucket m
     else m in
   let m = List.fold_left add_value m values in
@@ -103,9 +103,26 @@ module Commit = struct
     let author = Irmin.Task.owner task in
     return { date; author; sha1 = head }
 
-  let timeseries offset =
-    timeseries_gen offset ~date_of_value:(fun c -> Calendar.to_date(date c))
-                   ~empty_bucket:0  ~update:incr
+  let date_of_commit commit = Calendar.to_date (date commit)
+
+  let update_count c _ = incr c
+
+  let timeseries offset ?start ?stop commits =
+    timeseries_gen offset ~date_of_value:date_of_commit
+                   ~empty_bucket:0  ~update:update_count
+                   ?start ?stop commits
+
+  module StringSet = Set.Make(String)
+
+  let update_authors a commit =
+    a := StringSet.add (author commit) !a
+
+  let timeseries_author offset ?start ?stop commits =
+    let l = timeseries_gen offset ~date_of_value:date_of_commit
+                           ~empty_bucket:StringSet.empty
+                           ~update:update_authors
+                           ?start ?stop commits in
+    List.map (fun (d, a) -> (d, StringSet.cardinal a)) l
 end
 
 module History = Graph.Persistent.Digraph.ConcreteBidirectional(Commit)

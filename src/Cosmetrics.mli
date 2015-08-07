@@ -16,6 +16,13 @@ module Commit : sig
 
   val timeseries : [`Week | `Month] -> ?start: Date.t -> ?stop: Date.t ->
                    t list -> (Date.t * int) list
+
+  val timeseries_author :
+    [`Week | `Month] -> ?start: Date.t -> ?stop: Date.t ->
+    t list -> (Date.t * int) list
+  (** Return a time series of the number of authors contrinuting per
+      period of time, regardless of how many commits they made. *)
+  ;;
 end
 
 (** DAG of commits. *)

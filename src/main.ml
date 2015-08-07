@@ -20,6 +20,7 @@ let add_stats html repo commits =
   H.printf html "</ul>"
 
 let graph_commits html ~start ~stop repo commits =
+  let colors = [0x336600; 0xCC6600] in
   let m = Cosmetrics.Summary.make_map commits in
   let is_occasional c =
     not(is_main_author Cosmetrics.(StringMap.find (Commit.author c) m)) in
@@ -29,8 +30,13 @@ let graph_commits html ~start ~stop repo commits =
   let x = List.map fst l1 in
   let y1 = List.map (fun (_, cnt) -> float cnt) l1 in
   let y2 = List.map (fun (_, cnt) -> float cnt) l2 in
-  H.timeseries html ~x [("Total", y1); ("Occasional", y2)]
-               ~colors:[0x336600; 0xCC6600]
+  H.timeseries html ~x [("Total", y1); ("Occasional", y2)] ~colors;
+  let l1 = Cosmetrics.Commit.timeseries_author `Month ~start ~stop commits in
+  let l2 = Cosmetrics.Commit.timeseries_author
+             `Month ~start ~stop occasionals in
+  let y1 = List.map (fun (_, cnt) -> float cnt) l1 in
+  let y2 = List.map (fun (_, cnt) -> float cnt) l2 in
+  H.timeseries html ~x [("Total", y1); ("Occasional", y2)] ~colors
 
 let date_min d1 d2 =
   if Date.compare d1 d2 <= 0 then d1 else d2
