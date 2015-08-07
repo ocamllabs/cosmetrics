@@ -54,7 +54,7 @@ let group_by_gen ~date_for_period ~date_of_value ~offset
     let d = date_for_period(date_of_value v) in
     if after_start d && before_stop d then
       try incr(MW.find d m); m
-      with Not_found -> MW.add d (ref 0) m
+      with Not_found -> MW.add d (ref 1) m
     else m in
   let m = List.fold_left add_value m values in
   let m = MW.map (fun cnt -> !cnt) m in
