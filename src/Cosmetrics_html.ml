@@ -36,7 +36,7 @@ let print html s = Buffer.add_string html.body s
 
 let printf html = Printf.ksprintf (print html)
 
-let timeseries html ~x ~colors ys =
+let timeseries html ?(xlabel="") ?(ylabel="") ~x ~colors ys =
   if List.length colors < List.length ys then
     invalid_arg "Cosmetrics_html.timeseries: not enough colors";
   (* FIXME: should check that |x| the length of all y's. *)
@@ -66,20 +66,26 @@ let timeseries html ~x ~colors ys =
   print html "},\n";
   print html "colors: {\n";
   List.iteri (fun i c -> printf html "data%d: '#%06X',\n" i c) colors;
-  print html "},\n\
+  printf html "},\n\
               },\n\
                 axis: {
                   x: {
                     type: 'timeseries',
                     tick: {
-                      format: '%Y-%m',
+                      format: '%%Y-%%m',
                       fit: true,
                       count: 20,
+                      label: '%s',
                     }
+                  },
+                  y: {
+                    label: '%s'
                   }
                 }
               })\n\
               </script>"
+         (escape_single_quote xlabel)
+         (escape_single_quote ylabel)
 
 
 let write html fname =

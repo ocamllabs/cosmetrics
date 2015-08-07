@@ -30,13 +30,15 @@ let graph_commits html ~start ~stop repo commits =
   let x = List.map fst l1 in
   let y1 = List.map (fun (_, cnt) -> float cnt) l1 in
   let y2 = List.map (fun (_, cnt) -> float cnt) l2 in
-  H.timeseries html ~x [("Total", y1); ("Occasional", y2)] ~colors;
+  H.timeseries html ~x [("Total", y1); ("Occasional", y2)] ~colors
+               ~ylabel:"# commits";
   let l1 = Cosmetrics.Commit.timeseries_author `Month ~start ~stop commits in
   let l2 = Cosmetrics.Commit.timeseries_author
              `Month ~start ~stop occasionals in
   let y1 = List.map (fun (_, cnt) -> float cnt) l1 in
   let y2 = List.map (fun (_, cnt) -> float cnt) l2 in
   H.timeseries html ~x [("Total", y1); ("Occasional", y2)] ~colors
+               ~ylabel:"# authors"
 
 let date_min d1 d2 =
   if Date.compare d1 d2 <= 0 then d1 else d2
