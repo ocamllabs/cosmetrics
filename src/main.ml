@@ -1,5 +1,6 @@
 open Lwt
 open CalendarLib
+module T = Cosmetrics.Timeseries
 module H = Cosmetrics_html
 
 let is_main_author s =
@@ -23,7 +24,12 @@ let rec cummulative_loop prev = function
   | [] -> []
   | x :: tl -> let prev = prev +. x in prev :: cummulative_loop prev tl
 
-let cummulative l = cummulative_loop 0. l
+let cummulative =
+  let sum d x (prev, t') =
+    let prev = prev +. x in
+    (prev, T.add t' d prev) in
+  fun t -> let _, t' = T.fold t ~f:sum (0., T.empty) in
+         t'
 
 let graph html ?(per=`Month) ?(aliveness=true) ~start ~stop repo commits =
   let colors = [0x336600; 0xCC6600] in
@@ -33,27 +39,28 @@ let graph html ?(per=`Month) ?(aliveness=true) ~start ~stop repo commits =
   let occasionals = List.filter is_occasional commits in
   let l1 = Cosmetrics.Commit.timeseries per ~start ~stop commits in
   let l2 = Cosmetrics.Commit.timeseries per ~start ~stop occasionals in
-  let x = List.map fst l1 in
-  let y1 = List.map (fun (_, cnt) -> float cnt) l1 in
-  let y2 = List.map (fun (_, cnt) -> float cnt) l2 in
-  H.timeseries html ~x [("Total", y1); ("Occasional", y2)] ~colors
-               ~ylabel:"# commits";
-  H.timeseries html ~x [("∑ total", cummulative y1);
-                        ("∑ Occasional", cummulative y2)]
+  let l1 = T.map l1 float in
+  let l2 = T.map l2 float in
+  let x = T.dates l1 in
+  H.timeseries html ~x [("Total", T.values l1);
+                        ("Occasional", T.values l2)]
+               ~colors ~ylabel:"# commits";
+  H.timeseries html ~x [("∑ total", T.values(cummulative l1));
+                        ("∑ Occasional", T.values(cummulative l2))]
                ~colors ~ylabel:"# commits";
   let l1 = Cosmetrics.Commit.timeseries_author per ~start ~stop commits in
   let l2 = Cosmetrics.Commit.timeseries_author per ~start ~stop occasionals in
-  let y1 = List.map (fun (_, cnt) -> float cnt) l1 in
-  let y2 = List.map (fun (_, cnt) -> float cnt) l2 in
-  H.timeseries html ~x [("Total", y1); ("Occasional", y2)] ~colors
-               ~ylabel:"# authors";
+  let l1 = T.map l1 float in
+  let l2 = T.map l2 float in
+  H.timeseries html ~x [("Total", T.values l1);
+                        ("Occasional", T.values l2)]
+               ~colors ~ylabel:"# authors";
   if aliveness then (
     let alv0 = Cosmetrics.Commit.aliveness per ~start ~stop commits in
-    let alv = List.map snd alv0 in
-    H.timeseries html ~x [("Aliveness", alv)] ~colors;
+    H.timeseries html ~x [("Aliveness", T.values alv0)] ~colors;
     alv0
   )
-  else []
+  else T.empty
 
 let date_min d1 d2 =
   if Date.compare d1 d2 <= 0 then d1 else d2
@@ -73,23 +80,10 @@ let commits_date_range_exn = function
      let d = Calendar.to_date (Cosmetrics.Commit.date c) in
      commits_date_range_loop d d tl
 
-
-let rec sum_lists_1st_el ls ((sum, tls, all_empty) as acc) =
-  match ls with
-  | [] -> acc
-  | [] :: ls -> (* No more elements on that list, same as = 0., drop it *)
-     sum_lists_1st_el ls acc
-  | (x :: tl) :: ls ->
-     (* We reverse the order of lists in accumulating their tails but
-        the addition is commutative so we do not care. *)
-     sum_lists_1st_el ls (sum +. x, tl :: tls, false)
-
-(* Sum the lists elementwise. *)
-let rec sum_lists ls =
-  let s, tls, all_empty = sum_lists_1st_el ls (0., [], true) in
-  if all_empty then [s]
-  else s :: sum_lists tls
-
+let sum = function
+  | [] -> T.empty
+  | [t] -> t
+  | t0 :: tl -> List.fold_left T.sum t0 tl
 
 let main project remotes =
   catch (fun () -> Lwt_unix.mkdir project 0o775)
@@ -149,9 +143,10 @@ let main project remotes =
           ~more:(fun html ->
                  (* All lists correspond to the same times thanks to
                     [~start] and [~stop]. *)
-                 let x = List.map fst (List.hd alvs) in
-                 let alv = sum_lists (List.map (fun l -> List.map snd l) alvs) in
-                 H.timeseries html ~x [("Aliveness", alv)] ~colors:[0x336600]
+                 let x = T.dates (List.hd alvs) in
+                 let alv = sum alvs in
+                 H.timeseries html ~x [("Aliveness", T.values alv)]
+                              ~colors:[0x336600]
                               ~ylabel:"# projects alive"
                 )
   >>= fun _ -> return_unit

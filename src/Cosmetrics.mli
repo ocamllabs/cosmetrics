@@ -2,6 +2,49 @@
 
 open CalendarLib
 
+module Timeseries : sig
+  type 'a t
+  (** A time-series for values of type ['a]. *)
+
+  val to_list : 'a t -> (Date.t * 'a) list
+  (** Return the time-series as an associative list in increasing
+      order of the dates. *)
+
+  val dates : 'a t -> Date.t list
+  (** Return the dates in the time-series in increasing order. *)
+
+  val values : 'a t -> 'a list
+  (** [values t] return the values in the time-series in the same
+      order as [dates t]. *)
+
+  val map : 'a t -> ('a -> 'b) -> 'b t
+
+  val fold : 'a t -> f:(Date.t -> 'a -> 'b -> 'b) -> 'b -> 'b
+  (** [fold t f a] computes [f dN vN (... f d1 v1 init ...)] where
+      [d1],...,[dN] are the dates in the time-series in increasing
+      order and [v1],...,[vN] are the associated values. *)
+
+  val sum : float t -> float t -> float t
+
+
+  val start : _ t -> Date.t
+  (** The first date in the time-series. *)
+
+  val stop : _ t -> Date.t
+  (** The last date in the time-series. *)
+
+  val get_exn : 'a t -> Date.t -> 'a
+  (** [get_exn t d] returns the data associated to a particular date.
+      @raise Not_found if the date is not present in the time-series.  *)
+
+  val add : 'a t -> Date.t -> 'a -> 'a t
+  (** Add a date and associated value to the time-series. *)
+
+  val empty : 'a t
+  ;;
+end
+
+
 (** Commits in Git repositories. *)
 module Commit : sig
   type t
@@ -15,20 +58,20 @@ module Commit : sig
   val equal : t -> t -> bool
 
   val timeseries : [`Week | `Month] -> ?start: Date.t -> ?stop: Date.t ->
-                   t list -> (Date.t * int) list
+                   t list -> int Timeseries.t
   (** [timeseries period commits] returns a list in time-increasing
       order of the number of commits per week (starting on Sunday) or
       per month depending on [period]. *)
 
   val timeseries_author :
     [`Week | `Month] -> ?start: Date.t -> ?stop: Date.t ->
-    t list -> (Date.t * int) list
+    t list -> int Timeseries.t
   (** Return a time series of the number of authors contrinuting per
       period of time, regardless of how many commits they made. *)
 
   val aliveness : [`Week | `Month] -> ?start: Date.t -> ?stop: Date.t ->
                   ?pencil: float array -> ?offset: int ->
-                  t list -> (Date.t * float) list
+                  t list -> float Timeseries.t
   (** Return an "aliveness" measure (in the interval [0.] … [1.]) of
       the project along time. *)
   ;;

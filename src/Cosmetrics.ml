@@ -2,6 +2,45 @@
 open Lwt
 open CalendarLib
 
+module Timeseries = struct
+  module MW = Map.Make(Date)
+
+  type 'a t = 'a MW.t
+  let to_list = MW.bindings
+  let dates t = List.map fst (to_list t)
+  let values t = List.map snd (to_list t)
+  let map t f = MW.map f t
+  let fold t ~f init = MW.fold f t init
+
+  let start t = fst(MW.min_binding t)
+  let stop t = fst(MW.max_binding t)
+  let get_exn t d = MW.find d t
+  let add t d v = MW.add d v t
+  let empty = MW.empty
+
+
+  let sum_el d v1 v2 =
+    match v1, v2 with
+    | Some v1, Some v2 -> Some(v1 +. v2)
+    | (Some _ as v), None | None, (Some _ as v) -> v
+    | None, None -> None
+
+  let sum t1 t2 = MW.merge sum_el t1 t2
+
+  (* Add the date [d] and all subsequent weeks until [date_max]
+     (excluded) to [m]. *)
+  let rec add_all_offsets_loop t next_date d date_max ~empty_bucket =
+    if Date.compare d date_max < 0 then
+      let t = if MW.mem d t then t else MW.add d empty_bucket t in
+      add_all_offsets_loop t next_date (next_date d) date_max ~empty_bucket
+    else t
+
+  let add_all_offsets t next_date ~empty_bucket =
+    add_all_offsets_loop t next_date (next_date (start t)) (stop t)
+                         ~empty_bucket
+end
+
+
 let day_1 = Date.Period.day (-1)
 let day_2 = Date.Period.day (-2)
 let day_3 = Date.Period.day (-3)
@@ -23,16 +62,6 @@ let sunday_of_week d =
 
 let first_day_of_month d =
   Date.make (Date.year d) (Date.int_of_month (Date.month d)) 1
-
-module MW = Map.Make(Date)
-
-(* Add the date [d] and all subsequent weeks until [date_max]
-   (excluded) to [m]. *)
-let rec add_all_offsets offset d date_max m ~empty_bucket =
-  if Date.compare d date_max < 0 then
-    let m = if MW.mem d m then m else MW.add d empty_bucket m in
-    add_all_offsets offset (offset d) date_max m ~empty_bucket
-  else m
 
 let always_true _ = true
 
@@ -57,40 +86,37 @@ let timeseries_gen offset ~date_of_value
     | `Week -> sunday_of_week, add_one_week, sub_one_week
     | `Month -> first_day_of_month, add_one_month, sub_one_month in
   (* Add the boundary dates to [m], if they are provided. *)
-  let m = ref MW.empty in
+  let m = ref Timeseries.empty in
   let after_start = match start with
     | Some start -> let start = date_for_period start in
                     (* Make sure this date is in the map: *)
-                    m := MW.add start (ref empty_bucket) !m;
+                    m := Timeseries.add !m start (ref empty_bucket);
                     (fun d -> Date.compare d start >= 0)
     | None -> always_true in
   let before_stop = match stop with
     | Some stop -> let stop = date_for_period stop in
                    if not(after_start stop) then
                      invalid_arg "Cosmetrics.*timeseries: empty range";
-                   m := MW.add stop (ref empty_bucket) !m;
+                   m := Timeseries.add !m stop (ref empty_bucket);
                    (fun d -> Date.compare d stop <= 0)
     | None -> always_true in
   let get_bucket date =
-    try MW.find date !m
+    try Timeseries.get_exn !m date
     with Not_found ->
          let bucket = ref empty_bucket in
          if after_start date && before_stop date then
            (* Only add the bucket if within the range. *)
-           m := MW.add date bucket !m;
+           m := Timeseries.add !m date bucket;
          bucket in
   let add_value v =
     let d = date_for_period(date_of_value v) in
     update_with_value v d ~next ~prev ~get_bucket
   in
   List.iter add_value values;
-  let m = MW.map (fun cnt -> !cnt) !m in
+  let m = Timeseries.map !m (fun cnt -> !cnt) in
   (* Make sure all weeks in the range are present, if needed with a
      count of 0 *)
-  let date_min, _ = MW.min_binding m in
-  let date_max, _ = MW.max_binding m in
-  MW.bindings (add_all_offsets next (next date_min) date_max m
-                               ~empty_bucket)
+  Timeseries.add_all_offsets m next ~empty_bucket
 
 
 module Commit = struct
@@ -136,7 +162,7 @@ module Commit = struct
                            ~empty_bucket:StringSet.empty
                            ~update_with_value:update_authors
                            ?start ?stop commits in
-    List.map (fun (d, a) -> (d, StringSet.cardinal a)) l
+    Timeseries.map l (fun a -> StringSet.cardinal a)
 
 
   let default_offset = 2
@@ -158,10 +184,10 @@ module Commit = struct
       b := !b +. pencil.(offset + i)
     done
 
-  let squash_into_01 ((n, x) as y) =
-    if x >= 1. then (n, 1.)
-    else if x <= 0. then (n, 0.)
-    else y
+  let squash_into_01 x =
+    if x >= 1. then 1.
+    else if x <= 0. then 0.
+    else x
 
   let aliveness period ?start ?stop
                 ?(pencil=default_pencil) ?(offset=default_offset)
@@ -176,7 +202,7 @@ module Commit = struct
                            ~empty_bucket:0.
                            ~update_with_value:(update_aliveness pencil offset)
                            ?start ?stop commits in
-    List.map squash_into_01 l
+    Timeseries.map l squash_into_01
 end
 
 module History = Graph.Persistent.Digraph.ConcreteBidirectional(Commit)
