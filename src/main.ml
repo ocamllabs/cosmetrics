@@ -130,13 +130,12 @@ let main project remotes =
           ~aliveness:false
           ~more:(fun html ->
                  let alv = sum alvs in
-                 H.timeseries html [("Aliveness", alv)]
-                              ~colors:[0x336600]
-                              ~ylabel:"# projects alive";
                  let n = float(List.length alvs) in
-                 let alv = T.map alv (fun s -> 100. *. s /. n) in
+                 let alv2 = T.map alv (fun s -> 100. *. s /. n) in
                  H.timeseries html [("Aliveness", alv)]
-                              ~colors:[0x336600] ~ylabel:"# % alive"
+                              ~y2:[("% Aliveness", alv2)]
+                              ~colors:[0x336600] ~colors2:[0x336600]
+                              ~ylabel:"# projects alive";
                 )
   >>= fun _ -> return_unit
 
