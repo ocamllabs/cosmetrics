@@ -25,7 +25,7 @@ let rec cummulative_loop prev = function
 
 let cummulative l = cummulative_loop 0. l
 
-let graph html ?(per=`Month) ~start ~stop repo commits =
+let graph html ?(per=`Month) ?(aliveness=true) ~start ~stop repo commits =
   let colors = [0x336600; 0xCC6600] in
   let m = Cosmetrics.Summary.make_map commits in
   let is_occasional c =
@@ -47,9 +47,13 @@ let graph html ?(per=`Month) ~start ~stop repo commits =
   let y2 = List.map (fun (_, cnt) -> float cnt) l2 in
   H.timeseries html ~x [("Total", y1); ("Occasional", y2)] ~colors
                ~ylabel:"# authors";
-  let alv = Cosmetrics.Commit.aliveness per ~start ~stop commits in
-  let alv = List.map snd alv in
-  H.timeseries html ~x [("Aliveness", alv)] ~colors ~ylabel:"aliveness"
+  if aliveness then (
+    let alv0 = Cosmetrics.Commit.aliveness per ~start ~stop commits in
+    let alv = List.map snd alv0 in
+    H.timeseries html ~x [("Aliveness", alv)] ~colors;
+    alv0
+  )
+  else []
 
 let date_min d1 d2 =
   if Date.compare d1 d2 <= 0 then d1 else d2
@@ -68,6 +72,23 @@ let commits_date_range_exn = function
   | c :: tl ->
      let d = Calendar.to_date (Cosmetrics.Commit.date c) in
      commits_date_range_loop d d tl
+
+
+let rec sum_lists_1st_el ls ((sum, tls, all_empty) as acc) =
+  match ls with
+  | [] -> acc
+  | [] :: ls -> (* No more elements on that list, same as = 0., drop it *)
+     sum_lists_1st_el ls acc
+  | (x :: tl) :: ls ->
+     (* We reverse the order of lists in accumulating their tails but
+        the addition is commutative so we do not care. *)
+     sum_lists_1st_el ls (sum +. x, tl :: tls, false)
+
+(* Sum the lists elementwise. *)
+let rec sum_lists ls =
+  let s, tls, all_empty = sum_lists_1st_el ls (0., [], true) in
+  if all_empty then [s]
+  else s :: sum_lists tls
 
 
 let main project remotes =
@@ -102,7 +123,7 @@ let main project remotes =
     let link (repo, fname, _) =
       H.printf html "<a href=\"%s\">%s</a>\n" fname repo in
     List.iter link repo_commits in
-  let process (repo, fname, commits) =
+  let process ?(aliveness=true) ?(more=fun _ -> ()) (repo, fname, commits) =
     let html = H.make () in
     H.style html "div.graph {
                   float: right;
@@ -115,13 +136,25 @@ let main project remotes =
                   }";
     add_links html;
     H.printf html "<h1>Stats for %s (project = %s)</h1>" repo project;
-    graph html ~start ~stop repo commits;
+    let alv = graph html ~start ~stop repo commits ~aliveness in
+    more html;
     add_stats html repo commits;
-    H.write html fname
+    H.write html fname >>= fun () ->
+    return alv
   in
   let all_commits = List.concat (List.map (fun (_,_,c) -> c) repo_commits) in
-  process ("All_repositories", "index.html", all_commits) >>= fun () ->
-  Lwt_list.iter_p process repo_commits
+  Lwt_list.map_p process repo_commits >>= fun alvs ->
+  process ("all repositories", "index.html", all_commits)
+          ~aliveness:false
+          ~more:(fun html ->
+                 (* All lists correspond to the same times thanks to
+                    [~start] and [~stop]. *)
+                 let x = List.map fst (List.hd alvs) in
+                 let alv = sum_lists (List.map (fun l -> List.map snd l) alvs) in
+                 H.timeseries html ~x [("Aliveness", alv)] ~colors:[0x336600]
+                              ~ylabel:"# projects alive"
+                )
+  >>= fun _ -> return_unit
 
 let rec take n = function
   | [] -> []
@@ -129,5 +162,5 @@ let rec take n = function
 
 let () =
   let repos = Mirage_repo.all in
-  let repos = take 5 repos in
+  (* let repos = take 5 repos in *)
   Lwt_main.run (main "mirage" repos)
