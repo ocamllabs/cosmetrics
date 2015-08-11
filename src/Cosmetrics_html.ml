@@ -64,20 +64,34 @@ let print_serie html i t_merged =
                             print html (string_of_float v.(i));
                             not_first_el := true)
 
-let timeseries html ?(xlabel="") ?(ylabel="") ?(ty=`Area) ?tys ~colors ts =
-  let n = List.length ts in
-  if List.length colors < n then
-    invalid_arg "Cosmetrics_html.timeseries: not enough colors";
+let rec list_make n v =
+  if n <= 0 then [] else v :: list_make (n - 1) v
+
+let timeseries html ?(xlabel="") ?(ylabel="") ?(ty=`Area)
+               ?tys2 ?(colors2=[]) ?(y2=[]) ?tys ~colors ts =
+  let n1 = List.length ts in
+  let n2 = List.length y2 in
+  if List.length colors < n1 then
+    invalid_arg "Cosmetrics_html.timeseries: not enough ~colors";
+  if List.length colors2 < n2 then
+    invalid_arg "Cosmetrics_html.timeseries: not enough ~colors2";
   let types = match tys with
     | Some ty ->
-       if List.length ty < n then
-         invalid_arg "Cosmetrics_html.timeseries: not enough types";
+       if List.length ty < n1 then
+         invalid_arg "Cosmetrics_html.timeseries: not enough types (tys)";
        ty
-    | None -> List.map (fun _ -> ty) ts in
+    | None -> list_make n1 ty in
+  let types2 = match tys2 with
+    | Some ty ->
+       if List.length ty < n2 then
+         invalid_arg "Cosmetrics_html.timeseries: not enough types (tys2)";
+       ty
+    | None -> list_make n2 ty in
   (* FIXME: should check that |x| the length of all y's. *)
   html.i <- html.i + 1;
   printf html "<div id=\"cosmetrics%d\" class=\"graph\"></div>\n" html.i;
-  let t = merge ts in
+  (* Put [y2] in front that that the common case where it is empty is O(1) *)
+  let t = merge (y2 @ ts) in
   let x = T.mapi t (fun d _ -> "'" ^ Printer.Date.to_string d ^ "'") in
   let x = String.concat ", " (T.values x) in
   printf html "<script type=\"text/javascript\">\n\
@@ -87,22 +101,35 @@ let timeseries html ?(xlabel="") ?(ylabel="") ?(ty=`Area) ?tys ~colors ts =
                      x: 'x',
                      columns: [
                        ['x', %s],\n" html.i html.i x;
-  for i = 0 to n - 1 do
+  for i = 0 to n1 - 1 do
     printf html "['data%d', " i;
+    print_serie html (n2 + i) t;
+    print html "],\n"
+  done;
+  for i = 0 to n2 - 1 do
+    printf html "['data%d', " (n1 + i);
     print_serie html i t;
     print html "],\n"
   done;
   print html "],\n\
               names: {\n";
-  List.iteri (fun i (name, _) -> printf html "data%d: '%s',\n"
-                                      i (escape_single_quote name)) ts;
+  let print_name i name =
+    printf html "data%d: '%s',\n" i (escape_single_quote name) in
+  List.iteri (fun i (name, _) -> print_name i name) ts;
+  List.iteri (fun i (name, _) -> print_name (n1 + i) name) y2;
   print html "},\n\
               types: {\n";
-  List.iteri (fun i ty -> printf html "data%d: '%s',\n" i (string_of_types ty))
-             types;
-  print html "},\n";
-  print html "colors: {\n";
+  let print_type i ty = printf html "data%d: '%s',\n" i (string_of_types ty) in
+  List.iteri print_type types;
+  List.iteri (fun i ty -> print_type (n1 + i) ty) types2;
+  print html "},\n\
+              axes: {";
+  for i = 0 to n1 - 1 do printf html "data%d: 'y'," i done;
+  for i = 0 to n2 - 1 do printf html "data%d: 'y2'," (n1 + i) done;
+  print html "},\n\
+              colors: {\n";
   List.iteri (fun i c -> printf html "data%d: '#%06X',\n" i c) colors;
+  List.iteri (fun i c -> printf html "data%d: '#%06X',\n" (n1 + i) c) colors2;
   printf html "},\n\
               },\n\
                 axis: {
@@ -117,12 +144,16 @@ let timeseries html ?(xlabel="") ?(ylabel="") ?(ty=`Area) ?tys ~colors ts =
                   },
                   y: {
                     label: '%s'
+                  },
+                  y2: {
+                    show: %b
                   }
                 }
               })\n\
               </script>"
          (escape_single_quote xlabel)
          (escape_single_quote ylabel)
+         (n2 <> 0)
 
 
 let write html fname =
