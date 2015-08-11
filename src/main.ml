@@ -97,6 +97,9 @@ let main project remotes =
       try Filename.chop_extension repo with _ -> repo in
     List.map (fun (r,c) -> let r = shorten r in (r, r ^ ".html", c))
              repo_commits in
+  let repo_commits =
+    List.sort (fun (n1,_,_) (n2,_,_) -> String.compare n1 n2) repo_commits in
+
   let add_links html =
     H.print html "<a href=\"index.html\">All</a>\n";
     let link (repo, fname, _) =
