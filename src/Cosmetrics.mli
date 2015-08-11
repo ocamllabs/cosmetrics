@@ -57,6 +57,11 @@ module Commit : sig
   val hash : t -> int
   val equal : t -> t -> bool
 
+  val date_range_exn : t list -> Date.t * Date.t
+  (** Return the first and last dates (times are erased) of a list of
+      commits.
+      @raise Invalid_argument if the list is empty. *)
+
   val timeseries : [`Week | `Month] -> ?start: Date.t -> ?stop: Date.t ->
                    t list -> int Timeseries.t
   (** [timeseries period commits] returns a list in time-increasing

@@ -68,18 +68,6 @@ let date_min d1 d2 =
 let date_max d1 d2 =
   if Date.compare d1 d2 >= 0 then d1 else d2
 
-let rec commits_date_range_loop d0 d1 = function
-  | [] -> (d0, d1)
-  | c :: tl ->
-     let d = Calendar.to_date (Cosmetrics.Commit.date c) in
-     commits_date_range_loop (date_min d0 d) (date_max d1 d) tl
-
-let commits_date_range_exn = function
-  | [] -> invalid_arg "date_range_exn: empty list"
-  | c :: tl ->
-     let d = Calendar.to_date (Cosmetrics.Commit.date c) in
-     commits_date_range_loop d d tl
-
 let sum = function
   | [] -> T.empty
   | [t] -> t
@@ -101,9 +89,9 @@ let main project remotes =
     match repo_commits with
     | (_, commits0) :: tl ->
        let extremes (d0,d1) (_, commits) =
-         let (d0c, d1c) = commits_date_range_exn commits in
+         let d0c, d1c = Cosmetrics.Commit.date_range_exn commits in
          (date_min d0 d0c , date_max d1 d1c) in
-       List.fold_left extremes (commits_date_range_exn commits0) tl
+       List.fold_left extremes (Cosmetrics.Commit.date_range_exn commits0) tl
     | [] -> invalid_arg "Empty list of repositories" in
 
   let repo_commits =

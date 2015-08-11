@@ -119,6 +119,12 @@ let timeseries_gen offset ~date_of_value
   Timeseries.add_all_offsets m next ~empty_bucket
 
 
+let date_min d1 d2 =
+  if Date.compare d1 d2 <= 0 then d1 else d2
+
+let date_max d1 d2 =
+  if Date.compare d1 d2 >= 0 then d1 else d2
+
 module Commit = struct
   type t = {
       date: Calendar.t;
@@ -142,6 +148,16 @@ module Commit = struct
     return { date; author; sha1 = head }
 
   let date_of_commit commit = Calendar.to_date (date commit)
+
+  let rec date_range_loop d_min d_max = function
+    | [] -> d_min, d_max
+    | c :: tl -> let d = date_of_commit c in
+                 date_range_loop (date_min d_min d) (date_max d_max d) tl
+
+  let date_range_exn = function
+    | [] -> invalid_arg "Cosmetrics.Commit.date_range_exn: empty list"
+    | c :: tl -> let d = date_of_commit c in
+                 date_range_loop d d tl
 
   let update_count _ date ~next ~prev ~get_bucket =
     incr (get_bucket date)
