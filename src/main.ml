@@ -129,9 +129,14 @@ let main project remotes =
   process ("all repositories", "index.html", all_commits)
           ~aliveness:false
           ~more:(fun html ->
-                 H.timeseries html [("Aliveness", sum alvs)]
+                 let alv = sum alvs in
+                 H.timeseries html [("Aliveness", alv)]
                               ~colors:[0x336600]
-                              ~ylabel:"# projects alive"
+                              ~ylabel:"# projects alive";
+                 let n = float(List.length alvs) in
+                 let alv = T.map alv (fun s -> 100. *. s /. n) in
+                 H.timeseries html [("Aliveness", alv)]
+                              ~colors:[0x336600] ~ylabel:"# % alive"
                 )
   >>= fun _ -> return_unit
 
