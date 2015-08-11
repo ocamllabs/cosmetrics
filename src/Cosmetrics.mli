@@ -19,10 +19,17 @@ module Timeseries : sig
 
   val map : 'a t -> ('a -> 'b) -> 'b t
 
+  val mapi : 'a t -> (Date.t -> 'a -> 'b) -> 'b t
+
+  val iter : 'a t -> (Date.t -> 'a -> unit) -> unit
+
   val fold : 'a t -> f:(Date.t -> 'a -> 'b -> 'b) -> 'b -> 'b
   (** [fold t f a] computes [f dN vN (... f d1 v1 init ...)] where
       [d1],...,[dN] are the dates in the time-series in increasing
       order and [v1],...,[vN] are the associated values. *)
+
+  val merge : 'a t -> 'b t ->
+              (Date.t -> 'a option -> 'b option -> 'c option) -> 'c t
 
   val sum : float t -> float t -> float t
 

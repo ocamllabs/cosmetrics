@@ -10,6 +10,8 @@ module Timeseries = struct
   let dates t = List.map fst (to_list t)
   let values t = List.map snd (to_list t)
   let map t f = MW.map f t
+  let mapi t f = MW.mapi f t
+  let iter t f = MW.iter f t
   let fold t ~f init = MW.fold f t init
 
   let start t = fst(MW.min_binding t)
@@ -18,6 +20,7 @@ module Timeseries = struct
   let add t d v = MW.add d v t
   let empty = MW.empty
 
+  let merge t1 t2 f = MW.merge f t1 t2
 
   let sum_el d v1 v2 =
     match v1, v2 with

@@ -3,6 +3,7 @@
 
 open Lwt
 open CalendarLib
+module T = Cosmetrics.Timeseries
 
 let escape_single_quote s =
   let n = ref 0 in (* number of quotes *)
@@ -42,21 +43,43 @@ let string_of_types = function
   | `Step -> "step"
   | `Area_step -> "area-step"
 
-let timeseries html ?(xlabel="") ?(ylabel="") ?(ty=`Area) ?tys ~x ~colors ys =
-  let nb_of_y = List.length ys in
-  if List.length colors < nb_of_y then
+
+(* Construct a single time series with an array at each time entry.
+   Replace missing data with 0. *)
+let merge ts =
+  let n = List.length ts in
+  let t_merged = ref T.empty in
+  let add i d v =
+    try (T.get_exn !t_merged d).(i) <- v
+    with Not_found ->
+         let a = Array.make n 0. in (* date not yet present *)
+         a.(i) <- v;
+         t_merged := T.add !t_merged d a in
+  List.iteri (fun i (_, t) -> T.iter t (add i)) ts;
+  !t_merged
+
+let print_serie html i t_merged =
+  let not_first_el = ref false in
+  T.iter t_merged (fun _ v -> if !not_first_el then print html ", ";
+                            print html (string_of_float v.(i));
+                            not_first_el := true)
+
+let timeseries html ?(xlabel="") ?(ylabel="") ?(ty=`Area) ?tys ~colors ts =
+  let n = List.length ts in
+  if List.length colors < n then
     invalid_arg "Cosmetrics_html.timeseries: not enough colors";
   let types = match tys with
     | Some ty ->
-       if List.length ty < nb_of_y then
+       if List.length ty < n then
          invalid_arg "Cosmetrics_html.timeseries: not enough types";
        ty
-    | None -> List.map (fun _ -> ty) ys in
+    | None -> List.map (fun _ -> ty) ts in
   (* FIXME: should check that |x| the length of all y's. *)
   html.i <- html.i + 1;
   printf html "<div id=\"cosmetrics%d\" class=\"graph\"></div>\n" html.i;
-  let x = List.map (fun d -> "'" ^ Printer.Date.to_string d ^ "'") x in
-  let x = String.concat ", " x in
+  let t = merge ts in
+  let x = T.mapi t (fun d _ -> "'" ^ Printer.Date.to_string d ^ "'") in
+  let x = String.concat ", " (T.values x) in
   printf html "<script type=\"text/javascript\">\n\
                  var chart%d = c3.generate({
                    bindto: '#cosmetrics%d',
@@ -64,15 +87,15 @@ let timeseries html ?(xlabel="") ?(ylabel="") ?(ty=`Area) ?tys ~x ~colors ys =
                      x: 'x',
                      columns: [
                        ['x', %s],\n" html.i html.i x;
-  let add_y i (_, y) =
+  for i = 0 to n - 1 do
     printf html "['data%d', " i;
-    let y = String.concat ", " (List.map string_of_float y) in
-    print html y;  print html "],\n" in
-  List.iteri add_y ys;
+    print_serie html i t;
+    print html "],\n"
+  done;
   print html "],\n\
               names: {\n";
   List.iteri (fun i (name, _) -> printf html "data%d: '%s',\n"
-                                      i (escape_single_quote name)) ys;
+                                      i (escape_single_quote name)) ts;
   print html "},\n\
               types: {\n";
   List.iteri (fun i ty -> printf html "data%d: '%s',\n" i (string_of_types ty))

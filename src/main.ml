@@ -41,23 +41,20 @@ let graph html ?(per=`Month) ?(aliveness=true) ~start ~stop repo commits =
   let l2 = Cosmetrics.Commit.timeseries per ~start ~stop occasionals in
   let l1 = T.map l1 float in
   let l2 = T.map l2 float in
-  let x = T.dates l1 in
-  H.timeseries html ~x [("Total", T.values l1);
-                        ("Occasional", T.values l2)]
+  H.timeseries html [("Total", l1); ("Occasional", l2)]
                ~colors ~ylabel:"# commits";
-  H.timeseries html ~x [("∑ total", T.values(cummulative l1));
-                        ("∑ Occasional", T.values(cummulative l2))]
+  H.timeseries html [("∑ total", cummulative l1);
+                     ("∑ Occasional", cummulative l2)]
                ~colors ~ylabel:"# commits";
   let l1 = Cosmetrics.Commit.timeseries_author per ~start ~stop commits in
   let l2 = Cosmetrics.Commit.timeseries_author per ~start ~stop occasionals in
   let l1 = T.map l1 float in
   let l2 = T.map l2 float in
-  H.timeseries html ~x [("Total", T.values l1);
-                        ("Occasional", T.values l2)]
+  H.timeseries html [("Total", l1); ("Occasional", l2)]
                ~colors ~ylabel:"# authors";
   if aliveness then (
     let alv0 = Cosmetrics.Commit.aliveness per ~start ~stop commits in
-    H.timeseries html ~x [("Aliveness", T.values alv0)] ~colors;
+    H.timeseries html [("Aliveness", alv0)] ~colors;
     alv0
   )
   else T.empty
@@ -129,11 +126,7 @@ let main project remotes =
   process ("all repositories", "index.html", all_commits)
           ~aliveness:false
           ~more:(fun html ->
-                 (* All lists correspond to the same times thanks to
-                    [~start] and [~stop]. *)
-                 let x = T.dates (List.hd alvs) in
-                 let alv = sum alvs in
-                 H.timeseries html ~x [("Aliveness", T.values alv)]
+                 H.timeseries html [("Aliveness", sum alvs)]
                               ~colors:[0x336600]
                               ~ylabel:"# projects alive"
                 )
