@@ -38,46 +38,58 @@ let always_true _ = true
 
 let one_week = Date.Period.week 1
 let add_one_week d = Date.add d one_week
+let minus_one_week = Date.Period.week (-1)
+let sub_one_week d = Date.add d minus_one_week
 
 let add_one_month d =
-  Date.make (Date.year d) (1 + Date.int_of_month (Date.month d))
+  (* [make] performs the necessary normalization. *)
+  Date.make (Date.year d) (Date.int_of_month (Date.month d) + 1)
+            (Date.day_of_month d)
+
+let sub_one_month d =
+  Date.make (Date.year d) (Date.int_of_month (Date.month d) - 1)
             (Date.day_of_month d)
 
 let timeseries_gen offset ~date_of_value
-                   ~empty_bucket ~update
+                   ~empty_bucket ~update_with_value
                    ?start ?stop values =
-  let date_for_period, offset = match offset with
-    | `Week -> sunday_of_week, add_one_week
-    | `Month -> first_day_of_month, add_one_month in
-  (* Add the bundary dates to [m], if they are provided. *)
-  let after_start, m = match start with
+  let date_for_period, next, prev = match offset with
+    | `Week -> sunday_of_week, add_one_week, sub_one_week
+    | `Month -> first_day_of_month, add_one_month, sub_one_month in
+  (* Add the boundary dates to [m], if they are provided. *)
+  let m = ref MW.empty in
+  let after_start = match start with
     | Some start -> let start = date_for_period start in
-                    (fun d -> Date.compare d start >= 0),
                     (* Make sure this date is in the map: *)
-                    MW.add start (ref empty_bucket) MW.empty
-    | None -> always_true, MW.empty in
-  let before_stop, m = match stop with
+                    m := MW.add start (ref empty_bucket) !m;
+                    (fun d -> Date.compare d start >= 0)
+    | None -> always_true in
+  let before_stop = match stop with
     | Some stop -> let stop = date_for_period stop in
                    if not(after_start stop) then
                      invalid_arg "Cosmetrics.*timeseries: empty range";
-                   (fun d -> Date.compare d stop <= 0),
-                   MW.add stop (ref empty_bucket) m
-    | None -> always_true, m in
-  let add_value m v =
+                   m := MW.add stop (ref empty_bucket) !m;
+                   (fun d -> Date.compare d stop <= 0)
+    | None -> always_true in
+  let get_bucket date =
+    try MW.find date !m
+    with Not_found ->
+         let bucket = ref empty_bucket in
+         if after_start date && before_stop date then
+           (* Only add the bucket if within the range. *)
+           m := MW.add date bucket !m;
+         bucket in
+  let add_value v =
     let d = date_for_period(date_of_value v) in
-    if after_start d && before_stop d then
-      try update (MW.find d m) v; m
-      with Not_found -> let bucket = ref empty_bucket in
-                        update bucket v;
-                        MW.add d bucket m
-    else m in
-  let m = List.fold_left add_value m values in
-  let m = MW.map (fun cnt -> !cnt) m in
+    update_with_value v d ~next ~prev ~get_bucket
+  in
+  List.iter add_value values;
+  let m = MW.map (fun cnt -> !cnt) !m in
   (* Make sure all weeks in the range are present, if needed with a
      count of 0 *)
   let date_min, _ = MW.min_binding m in
   let date_max, _ = MW.max_binding m in
-  MW.bindings (add_all_offsets offset (offset date_min) date_max m
+  MW.bindings (add_all_offsets next (next date_min) date_max m
                                ~empty_bucket)
 
 
@@ -105,24 +117,66 @@ module Commit = struct
 
   let date_of_commit commit = Calendar.to_date (date commit)
 
-  let update_count c _ = incr c
+  let update_count _ date ~next ~prev ~get_bucket =
+    incr (get_bucket date)
 
   let timeseries offset ?start ?stop commits =
     timeseries_gen offset ~date_of_value:date_of_commit
-                   ~empty_bucket:0  ~update:update_count
+                   ~empty_bucket:0  ~update_with_value:update_count
                    ?start ?stop commits
 
   module StringSet = Set.Make(String)
 
-  let update_authors a commit =
+  let update_authors commit date ~next ~prev ~get_bucket =
+    let a = get_bucket date in
     a := StringSet.add (author commit) !a
 
   let timeseries_author offset ?start ?stop commits =
     let l = timeseries_gen offset ~date_of_value:date_of_commit
                            ~empty_bucket:StringSet.empty
-                           ~update:update_authors
+                           ~update_with_value:update_authors
                            ?start ?stop commits in
     List.map (fun (d, a) -> (d, StringSet.cardinal a)) l
+
+
+  let default_offset = 2
+  let default_pencil = [| 0.05; 0.1; 0.2; 0.15; 0.10; 0.05; 0.01 |]
+
+  let update_aliveness pencil offset commit date ~next ~prev ~get_bucket =
+    let b = get_bucket (date: Date.t) in
+    b := !b +. pencil.(offset);
+    let d = ref date in
+    for i = -1 downto -offset do
+      d := prev !d;
+      let b = get_bucket !d in
+      b := !b +. pencil.(offset + i)
+    done;
+    let d = ref date in (* start again from the date of the commit *)
+    for i = 1 to Array.length pencil - offset - 1 do
+      d := next !d;
+      let b = get_bucket !d in
+      b := !b +. pencil.(offset + i)
+    done
+
+  let squash_into_01 ((n, x) as y) =
+    if x >= 1. then (n, 1.)
+    else if x <= 0. then (n, 0.)
+    else y
+
+  let aliveness period ?start ?stop
+                ?(pencil=default_pencil) ?(offset=default_offset)
+                commits =
+    if offset < 0 then
+      invalid_arg "Cosmetrics.Commit.aliveness: offset < 0";
+    let n = Array.length pencil in
+    if offset >= n then
+      invalid_arg(Printf.sprintf "Cosmetrics.Commit.aliveness: offset = %d >= \
+                                  %d = length pencil" offset n);
+    let l = timeseries_gen period ~date_of_value:date_of_commit
+                           ~empty_bucket:0.
+                           ~update_with_value:(update_aliveness pencil offset)
+                           ?start ?stop commits in
+    List.map squash_into_01 l
 end
 
 module History = Graph.Persistent.Digraph.ConcreteBidirectional(Commit)

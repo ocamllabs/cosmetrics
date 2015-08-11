@@ -46,7 +46,10 @@ let graph html ?(per=`Month) ~start ~stop repo commits =
   let y1 = List.map (fun (_, cnt) -> float cnt) l1 in
   let y2 = List.map (fun (_, cnt) -> float cnt) l2 in
   H.timeseries html ~x [("Total", y1); ("Occasional", y2)] ~colors
-               ~ylabel:"# authors"
+               ~ylabel:"# authors";
+  let alv = Cosmetrics.Commit.aliveness per ~start ~stop commits in
+  let alv = List.map snd alv in
+  H.timeseries html ~x [("Aliveness", alv)] ~colors ~ylabel:"aliveness"
 
 let date_min d1 d2 =
   if Date.compare d1 d2 <= 0 then d1 else d2
@@ -79,17 +82,6 @@ let main project remotes =
   >>= fun repo_commits ->
   Lwt_io.printlf "done.%!" >>= fun () ->
 
-  let html = H.make () in
-  H.style html "div.graph {
-                  float: right;
-                    margin-right: 2ex;
-                    width: 60%;
-                    height: 30ex;
-                  }
-                  .main {
-                    color: #336600;
-                  }";
-  H.printf html "<h1>Stats for %s</h1>" project;
   let start, stop =
     match repo_commits with
     | (_, commits0) :: tl ->
@@ -98,15 +90,38 @@ let main project remotes =
          (date_min d0 d0c , date_max d1 d1c) in
        List.fold_left extremes (commits_date_range_exn commits0) tl
     | [] -> invalid_arg "Empty list of repositories" in
-  let process (repo, commits) =
-    H.printf html "<h2 style='clear: both'>%s</h2>" repo;
+
+  let repo_commits =
+    let shorten repo =
+      let repo = Filename.basename repo in
+      try Filename.chop_extension repo with _ -> repo in
+    List.map (fun (r,c) -> let r = shorten r in (r, r ^ ".html", c))
+             repo_commits in
+  let add_links html =
+    H.print html "<a href=\"index.html\">All</a>\n";
+    let link (repo, fname, _) =
+      H.printf html "<a href=\"%s\">%s</a>\n" fname repo in
+    List.iter link repo_commits in
+  let process (repo, fname, commits) =
+    let html = H.make () in
+    H.style html "div.graph {
+                  float: right;
+                    margin-right: 2ex;
+                    width: 60%;
+                    height: 30ex;
+                  }
+                  .main {
+                    color: #336600;
+                  }";
+    add_links html;
+    H.printf html "<h1>Stats for %s (project = %s)</h1>" repo project;
     graph html ~start ~stop repo commits;
-    add_stats html repo commits
+    add_stats html repo commits;
+    H.write html fname
   in
-  let all_commits = List.concat (List.map snd repo_commits) in
-  process ("All_repositories", all_commits);
-  List.iter process repo_commits;
-  H.write html "index.html"
+  let all_commits = List.concat (List.map (fun (_,_,c) -> c) repo_commits) in
+  process ("All_repositories", "index.html", all_commits) >>= fun () ->
+  Lwt_list.iter_p process repo_commits
 
 let rec take n = function
   | [] -> []
@@ -114,5 +129,5 @@ let rec take n = function
 
 let () =
   let repos = Mirage_repo.all in
-  (* let repos = take 5 repos in *)
+  let repos = take 5 repos in
   Lwt_main.run (main "mirage" repos)
