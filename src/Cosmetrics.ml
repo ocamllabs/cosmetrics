@@ -3,7 +3,7 @@ open Lwt
 open CalendarLib
 
 module Timeseries = struct
-  module MW = Map.Make(Date)
+  module MW = Map.Make(Calendar)
 
   type 'a t = 'a MW.t
   let to_list = MW.bindings
@@ -33,7 +33,7 @@ module Timeseries = struct
   (* Add the date [d] and all subsequent weeks until [date_max]
      (excluded) to [m]. *)
   let rec add_all_offsets_loop t next_date d date_max ~empty_bucket =
-    if Date.compare d date_max < 0 then
+    if Calendar.compare d date_max < 0 then
       let t = if MW.mem d t then t else MW.add d empty_bucket t in
       add_all_offsets_loop t next_date (next_date d) date_max ~empty_bucket
     else t
@@ -44,43 +44,44 @@ module Timeseries = struct
 end
 
 
-let day_1 = Date.Period.day (-1)
-let day_2 = Date.Period.day (-2)
-let day_3 = Date.Period.day (-3)
-let day_4 = Date.Period.day (-4)
-let day_5 = Date.Period.day (-5)
-let day_6 = Date.Period.day (-6)
+let day_1 = Calendar.Period.day (-1)
+let day_2 = Calendar.Period.day (-2)
+let day_3 = Calendar.Period.day (-3)
+let day_4 = Calendar.Period.day (-4)
+let day_5 = Calendar.Period.day (-5)
+let day_6 = Calendar.Period.day (-6)
 
 (* Return a date [d] where the day was changed to be the Sunday of the
    week (i.e. the preceding Sunday). *)
 let sunday_of_week d =
-  match Date.day_of_week d with
-  | Date.Sun -> d
-  | Date.Mon -> Date.add d day_1
-  | Date.Tue -> Date.add d day_2
-  | Date.Wed -> Date.add d day_3
-  | Date.Thu -> Date.add d day_4
-  | Date.Fri -> Date.add d day_5
-  | Date.Sat -> Date.add d day_6
+  match Calendar.day_of_week d with
+  | Calendar.Sun -> d
+  | Calendar.Mon -> Calendar.add d day_1
+  | Calendar.Tue -> Calendar.add d day_2
+  | Calendar.Wed -> Calendar.add d day_3
+  | Calendar.Thu -> Calendar.add d day_4
+  | Calendar.Fri -> Calendar.add d day_5
+  | Calendar.Sat -> Calendar.add d day_6
 
 let first_day_of_month d =
-  Date.make (Date.year d) (Date.int_of_month (Date.month d)) 1
+  Calendar.make (Calendar.year d) (Date.int_of_month (Calendar.month d)) 1
+                0 0 0
 
 let always_true _ = true
 
-let one_week = Date.Period.week 1
-let add_one_week d = Date.add d one_week
-let minus_one_week = Date.Period.week (-1)
-let sub_one_week d = Date.add d minus_one_week
+let one_week = Calendar.Period.week 1
+let add_one_week d = Calendar.add d one_week
+let minus_one_week = Calendar.Period.week (-1)
+let sub_one_week d = Calendar.add d minus_one_week
 
 let add_one_month d =
   (* [make] performs the necessary normalization. *)
-  Date.make (Date.year d) (Date.int_of_month (Date.month d) + 1)
-            (Date.day_of_month d)
+  Calendar.make (Calendar.year d) (Date.int_of_month (Calendar.month d) + 1)
+                (Calendar.day_of_month d) 0 0 0
 
 let sub_one_month d =
-  Date.make (Date.year d) (Date.int_of_month (Date.month d) - 1)
-            (Date.day_of_month d)
+  Calendar.make (Calendar.year d) (Date.int_of_month (Calendar.month d) - 1)
+                (Calendar.day_of_month d) 0 0 0
 
 let timeseries_gen offset ~date_of_value
                    ~empty_bucket ~update_with_value
@@ -94,14 +95,14 @@ let timeseries_gen offset ~date_of_value
     | Some start -> let start = date_for_period start in
                     (* Make sure this date is in the map: *)
                     m := Timeseries.add !m start (ref empty_bucket);
-                    (fun d -> Date.compare d start >= 0)
+                    (fun d -> Calendar.compare d start >= 0)
     | None -> always_true in
   let before_stop = match stop with
     | Some stop -> let stop = date_for_period stop in
                    if not(after_start stop) then
                      invalid_arg "Cosmetrics.*timeseries: empty range";
                    m := Timeseries.add !m stop (ref empty_bucket);
-                   (fun d -> Date.compare d stop <= 0)
+                   (fun d -> Calendar.compare d stop <= 0)
     | None -> always_true in
   let get_bucket date =
     try Timeseries.get_exn !m date
@@ -123,10 +124,10 @@ let timeseries_gen offset ~date_of_value
 
 
 let date_min d1 d2 =
-  if Date.compare d1 d2 <= 0 then d1 else d2
+  if Calendar.compare d1 d2 <= 0 then d1 else d2
 
 let date_max d1 d2 =
-  if Date.compare d1 d2 >= 0 then d1 else d2
+  if Calendar.compare d1 d2 >= 0 then d1 else d2
 
 module Commit = struct
   type t = {
@@ -150,23 +151,21 @@ module Commit = struct
     let author = Irmin.Task.owner task in
     return { date; author; sha1 = head }
 
-  let date_of_commit commit = Calendar.to_date (date commit)
-
   let rec date_range_loop d_min d_max = function
     | [] -> d_min, d_max
-    | c :: tl -> let d = date_of_commit c in
+    | c :: tl -> let d = date c in
                  date_range_loop (date_min d_min d) (date_max d_max d) tl
 
   let date_range_exn = function
     | [] -> invalid_arg "Cosmetrics.Commit.date_range_exn: empty list"
-    | c :: tl -> let d = date_of_commit c in
+    | c :: tl -> let d = date c in
                  date_range_loop d d tl
 
   let update_count _ date ~next ~prev ~get_bucket =
     incr (get_bucket date)
 
   let timeseries offset ?start ?stop commits =
-    timeseries_gen offset ~date_of_value:date_of_commit
+    timeseries_gen offset ~date_of_value:date
                    ~empty_bucket:0  ~update_with_value:update_count
                    ?start ?stop commits
 
@@ -177,7 +176,7 @@ module Commit = struct
     a := StringSet.add (author commit) !a
 
   let timeseries_author offset ?start ?stop commits =
-    let l = timeseries_gen offset ~date_of_value:date_of_commit
+    let l = timeseries_gen offset ~date_of_value:date
                            ~empty_bucket:StringSet.empty
                            ~update_with_value:update_authors
                            ?start ?stop commits in
@@ -188,7 +187,7 @@ module Commit = struct
   let default_pencil = [| 0.05; 0.1; 0.2; 0.15; 0.10; 0.05; 0.01 |]
 
   let update_aliveness pencil offset commit date ~next ~prev ~get_bucket =
-    let b = get_bucket (date: Date.t) in
+    let b = get_bucket (date: Calendar.t) in
     b := !b +. pencil.(offset);
     let d = ref date in
     for i = -1 downto -offset do
@@ -217,7 +216,7 @@ module Commit = struct
     if offset >= n then
       invalid_arg(Printf.sprintf "Cosmetrics.Commit.aliveness: offset = %d >= \
                                   %d = length pencil" offset n);
-    let l = timeseries_gen period ~date_of_value:date_of_commit
+    let l = timeseries_gen period ~date_of_value:date
                            ~empty_bucket:0.
                            ~update_with_value:(update_aliveness pencil offset)
                            ?start ?stop commits in

@@ -60,10 +60,10 @@ let graph html ?(per=`Month) ?(aliveness=true) ~start ~stop repo commits =
   else T.empty
 
 let date_min d1 d2 =
-  if Date.compare d1 d2 <= 0 then d1 else d2
+  if Calendar.compare d1 d2 <= 0 then d1 else d2
 
 let date_max d1 d2 =
-  if Date.compare d1 d2 >= 0 then d1 else d2
+  if Calendar.compare d1 d2 >= 0 then d1 else d2
 
 let sum = function
   | [] -> T.empty

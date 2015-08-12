@@ -92,7 +92,8 @@ let timeseries html ?(xlabel="") ?(ylabel="") ?(ty=`Area)
   printf html "<div id=\"cosmetrics%d\" class=\"graph\"></div>\n" html.i;
   (* Put [y2] in front that that the common case where it is empty is O(1) *)
   let t = merge (y2 @ ts) in
-  let x = T.mapi t (fun d _ -> "'" ^ Printer.Date.to_string d ^ "'") in
+  let x =
+    T.mapi t (fun d _ -> "'" ^ Printer.Calendar.sprint "%Y-%m-%d" d ^ "'") in
   let x = String.concat ", " (T.values x) in
   printf html "<script type=\"text/javascript\">\n\
                  var chart%d = c3.generate({
