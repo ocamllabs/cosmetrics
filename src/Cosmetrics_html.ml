@@ -151,10 +151,79 @@ let timeseries html ?(xlabel="") ?(ylabel="") ?(ty=`Area)
                   }
                 }
               })\n\
-              </script>"
+              </script>\n"
          (escape_single_quote xlabel)
          (escape_single_quote ylabel)
          (n2 <> 0)
+
+
+(** The rows and columns of [m] correspond to the groups.
+    [m.(i).(j)] expresses the relationship from group [i] to group [j]. *)
+let chord html ?(padding=0.05) ?(width=600) ?(height=600)
+          ?inner_radius ?outer_radius
+          ~colors (m: float array array) =
+  let n = Array.length m in
+  if List.length colors < n then
+    invalid_arg "Cosmetrics_html.chord: too few colors colors";
+  (* See https://github.com/mbostock/d3/wiki/Chord-Layout#chords *)
+  html.i <- html.i + 1;
+  printf html "<div id=\"cosmetrics%d\" class=\"chord\"></div>\n" html.i;
+  printf html "<script type=\"text/javascript\">\n\
+               var chord%d = d3.layout.chord()
+               .padding(%g)
+               .sortSubgroups(d3.descending)
+               .matrix([\n" html.i padding;
+  for i = 0 to Array.length m - 1 do
+    print html "[ ";
+    let mi = m.(i) in
+    for j = 0 to Array.length mi - 1 do
+      printf html "%g, " mi.(j)
+    done;
+    print html "],\n";
+  done;
+  print html "]);\n";
+  let colors = List.map (fun c -> Printf.sprintf "'#%06X'" c) colors in
+  printf html "var fill%d = d3.scale.ordinal().domain(d3.range(%d))
+               .range([%s]);\n"
+         html.i (List.length colors) (String.concat ", " colors);
+  printf html "var svg%d = d3.select('#cosmetrics%d').append('svg')
+               .attr('width', %d).attr('height', %d)
+               .append('g')
+               .attr('transform', 'translate(%d, %d)');\n"
+         html.i html.i width height (width / 2) (height / 2);
+  let inner_radius = match inner_radius with
+    | None -> float(min width height) *. 0.41
+    | Some r -> r in
+  let outer_radius = match outer_radius with
+    | None -> inner_radius *. 1.1
+    | Some r -> r in
+  printf html "svg%d.append('g').selectAll('path')
+               .data(chord%d.groups)
+               .enter().append('path')
+               .style('fill', function(d) { return fill%d(d.index); })
+               .style('stroke', function(d) { return fill%d(d.index); })
+               .attr('d', d3.svg.arc().innerRadius(%g).outerRadius(%g))
+               .on('mouseover', fade%d(0.1))
+               .on('mouseout', fade%d(1));\n"
+         html.i html.i html.i html.i inner_radius outer_radius html.i html.i;
+  printf html "svg%d.append('g').attr('class', 'chord')
+               .selectAll('path')
+               .data(chord%d.chords)
+               .enter().append('path')
+               .attr('d', d3.svg.chord().radius(%g))
+               .style('fill', function(d) { return fill%d(d.target.index); })
+               .style('opacity', 1);\n"
+         html.i html.i inner_radius html.i;
+  printf html "function fade%d(opacity) {
+                 return function(g, i) {
+                   svg%d.selectAll('.chord path')
+                   .filter(function(d) { return d.source.index != i \
+                                             && d.target.index != i; })
+                   .transition()
+                   .style('opacity', opacity);
+                 };
+               }\n" html.i html.i;
+  print html "</script>\n"
 
 
 let write html fname =

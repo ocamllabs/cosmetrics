@@ -1,6 +1,7 @@
 open Lwt
 open CalendarLib
-module T = Cosmetrics.Timeseries
+module C = Cosmetrics
+module T = C.Timeseries
 module H = Cosmetrics_html
 
 let is_main_author s =
@@ -59,6 +60,15 @@ let graph html ?(per=`Month) ?(busyness=true) ~start ~stop repo commits =
   )
   else T.empty
 
+let paths html repo_commits =
+  let module S = Cosmetrics.StringMap in
+  (* Map [m]: author → repo time-series *)
+  let add_from_repo m (repo, commits) =
+    List.fold_left (fun m c -> T.add m (C.Commit.date c) repo) m commits in
+  let m = List.fold_left add_from_repo T.empty repo_commits in
+  m
+
+
 let date_min d1 d2 =
   if Calendar.compare d1 d2 <= 0 then d1 else d2
 
@@ -113,6 +123,9 @@ let main project remotes =
                     width: 60%;
                     height: 30ex;
                   }
+                  div.chord {
+                    float: right;
+                  }
                   .main {
                     color: #336600;
                   }";
@@ -136,6 +149,11 @@ let main project remotes =
                               ~y2:[("% Busyness", alv2)]
                               ~colors:[0x336600] ~colors2:[0x336600]
                               ~ylabel:"# projects busy";
+                 H.chord html [| [| 11975.; 5871.; 8916.; 2868. |];
+                                 [| 1951.; 10048.; 2060.; 6171. |];
+                                 [| 8010.; 16145.; 8090.; 8045. |];
+                                 [| 1013.;   990.;  940.; 6907. |] |]
+                         ~colors:[0; 0xFFDD89; 0x957244; 0xF26223]
                 )
   >>= fun _ -> return_unit
 
@@ -145,5 +163,5 @@ let rec take n = function
 
 let () =
   let repos = Mirage_repo.all in
-  (* let repos = take 5 repos in *)
+  let repos = take 5 repos in
   Lwt_main.run (main "mirage" repos)
