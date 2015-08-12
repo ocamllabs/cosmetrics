@@ -186,7 +186,7 @@ module Commit = struct
   let default_offset = 2
   let default_pencil = [| 0.05; 0.1; 0.2; 0.15; 0.10; 0.05; 0.01 |]
 
-  let update_aliveness pencil offset commit date ~next ~prev ~get_bucket =
+  let update_busyness pencil offset commit date ~next ~prev ~get_bucket =
     let b = get_bucket (date: Calendar.t) in
     b := !b +. pencil.(offset);
     let d = ref date in
@@ -207,18 +207,18 @@ module Commit = struct
     else if x <= 0. then 0.
     else x
 
-  let aliveness period ?start ?stop
-                ?(pencil=default_pencil) ?(offset=default_offset)
-                commits =
+  let busyness period ?start ?stop
+               ?(pencil=default_pencil) ?(offset=default_offset)
+               commits =
     if offset < 0 then
-      invalid_arg "Cosmetrics.Commit.aliveness: offset < 0";
+      invalid_arg "Cosmetrics.Commit.busyness: offset < 0";
     let n = Array.length pencil in
     if offset >= n then
-      invalid_arg(Printf.sprintf "Cosmetrics.Commit.aliveness: offset = %d >= \
+      invalid_arg(Printf.sprintf "Cosmetrics.Commit.busyness: offset = %d >= \
                                   %d = length pencil" offset n);
     let l = timeseries_gen period ~date_of_value:date
                            ~empty_bucket:0.
-                           ~update_with_value:(update_aliveness pencil offset)
+                           ~update_with_value:(update_busyness pencil offset)
                            ?start ?stop commits in
     Timeseries.map l squash_into_01
 end

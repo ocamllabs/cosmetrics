@@ -82,11 +82,11 @@ module Commit : sig
   (** Return a time series of the number of authors contrinuting per
       period of time, regardless of how many commits they made. *)
 
-  val aliveness :
+  val busyness :
     [`Week | `Month] -> ?start: Calendar.t -> ?stop: Calendar.t ->
     ?pencil: float array -> ?offset: int ->
     t list -> float Timeseries.t
-  (** Return an "aliveness" measure (in the interval [0.] … [1.]) of
+  (** Return an "busyness" measure (in the interval [0.] … [1.]) of
       the project along time. *)
   ;;
 end

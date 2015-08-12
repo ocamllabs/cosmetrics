@@ -31,7 +31,7 @@ let cummulative =
   fun t -> let _, t' = T.fold t ~f:sum (0., T.empty) in
          t'
 
-let graph html ?(per=`Month) ?(aliveness=true) ~start ~stop repo commits =
+let graph html ?(per=`Month) ?(busyness=true) ~start ~stop repo commits =
   let colors = [0x336600; 0xCC6600] in
   let m = Cosmetrics.Summary.make_map commits in
   let is_occasional c =
@@ -52,9 +52,9 @@ let graph html ?(per=`Month) ?(aliveness=true) ~start ~stop repo commits =
   let l2 = T.map l2 float in
   H.timeseries html [("Total", l1); ("Occasional", l2)]
                ~colors ~ylabel:"# authors";
-  if aliveness then (
-    let alv0 = Cosmetrics.Commit.aliveness per ~start ~stop commits in
-    H.timeseries html [("Aliveness", alv0)] ~colors;
+  if busyness then (
+    let alv0 = Cosmetrics.Commit.busyness per ~start ~stop commits in
+    H.timeseries html [("Busyness", alv0)] ~colors;
     alv0
   )
   else T.empty
@@ -105,7 +105,7 @@ let main project remotes =
     let link (repo, fname, _) =
       H.printf html "<a href=\"%s\">%s</a>\n" fname repo in
     List.iter link repo_commits in
-  let process ?(aliveness=true) ?(more=fun _ -> ()) (repo, fname, commits) =
+  let process ?(busyness=true) ?(more=fun _ -> ()) (repo, fname, commits) =
     let html = H.make () in
     H.style html "div.graph {
                   float: right;
@@ -118,7 +118,7 @@ let main project remotes =
                   }";
     add_links html;
     H.printf html "<h1>Stats for %s (project = %s)</h1>" repo project;
-    let alv = graph html ~start ~stop repo commits ~aliveness in
+    let alv = graph html ~start ~stop repo commits ~busyness in
     more html;
     add_stats html repo commits;
     H.write html fname >>= fun () ->
@@ -127,15 +127,15 @@ let main project remotes =
   let all_commits = List.concat (List.map (fun (_,_,c) -> c) repo_commits) in
   Lwt_list.map_p process repo_commits >>= fun alvs ->
   process ("all repositories", "index.html", all_commits)
-          ~aliveness:false
+          ~busyness:false
           ~more:(fun html ->
                  let alv = sum alvs in
                  let n = float(List.length alvs) in
                  let alv2 = T.map alv (fun s -> 100. *. s /. n) in
-                 H.timeseries html [("Aliveness", alv)]
-                              ~y2:[("% Aliveness", alv2)]
+                 H.timeseries html [("Busyness", alv)]
+                              ~y2:[("% Busyness", alv2)]
                               ~colors:[0x336600] ~colors2:[0x336600]
-                              ~ylabel:"# projects alive";
+                              ~ylabel:"# projects busy";
                 )
   >>= fun _ -> return_unit
 
