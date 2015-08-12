@@ -139,22 +139,23 @@ let main project remotes =
   in
   let all_commits = List.concat (List.map (fun (_,_,c) -> c) repo_commits) in
   Lwt_list.map_p process repo_commits >>= fun alvs ->
+  let global_graphs html =
+    let alv = sum alvs in
+    let n = float(List.length alvs) in
+    let alv2 = T.map alv (fun s -> 100. *. s /. n) in
+    H.timeseries html [("Busyness", alv)]
+                 ~y2:[("% Busyness", alv2)]
+                 ~colors:[0x336600] ~colors2:[0x336600]
+                 ~ylabel:"# projects busy";
+    H.chord html [| [| 11975.; 5871.; 8916.; 2868. |];
+                    [| 1951.; 10048.; 2060.; 6171. |];
+                    [| 8010.; 16145.; 8090.; 8045. |];
+                    [| 1013.;   990.;  940.; 6907. |] |]
+            ~colors:[0; 0xFFDD89; 0x957244; 0xF26223]
+  in
   process ("all repositories", "index.html", all_commits)
           ~busyness:false
-          ~more:(fun html ->
-                 let alv = sum alvs in
-                 let n = float(List.length alvs) in
-                 let alv2 = T.map alv (fun s -> 100. *. s /. n) in
-                 H.timeseries html [("Busyness", alv)]
-                              ~y2:[("% Busyness", alv2)]
-                              ~colors:[0x336600] ~colors2:[0x336600]
-                              ~ylabel:"# projects busy";
-                 H.chord html [| [| 11975.; 5871.; 8916.; 2868. |];
-                                 [| 1951.; 10048.; 2060.; 6171. |];
-                                 [| 8010.; 16145.; 8090.; 8045. |];
-                                 [| 1013.;   990.;  940.; 6907. |] |]
-                         ~colors:[0; 0xFFDD89; 0x957244; 0xF26223]
-                )
+          ~more:global_graphs
   >>= fun _ -> return_unit
 
 let rec take n = function
