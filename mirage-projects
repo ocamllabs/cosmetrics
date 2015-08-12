@@ -3,7 +3,7 @@
 echo "Making a list of all Mirage repositories"
 
 CURRENT_DIR=`pwd`
-DIR=`mktemp --directory ocaml-metrics-XXXX`
+DIR=`mktemp -d ocaml-metrics-XXXXXX`
 #echo "Using temporary directory $DIR"
 cd $DIR
 git clone https://github.com/mirage/megamirage.git
