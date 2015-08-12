@@ -13,7 +13,7 @@ Library "cosmetrics"
   Path:         src/
   Modules:      Cosmetrics
   #InternalModules: 
-  BuildDepends: irmin.unix, ocamlgraph, calendar
+  BuildDepends: irmin.unix, git, ocamlgraph, calendar
   BuildTools:   ocamlbuild
 
 Executable cosmetrics
