@@ -72,7 +72,13 @@ let hue h =
   | 5. -> 0xFF0000 lor (255 - f)
   | _ -> assert false
 
-
+(* Copied from http://colorbrewer2.org/ *)
+let color_scheme = [| 0xa6cee3; 0x1f78b4; 0xb2df8a; 0x33a02c; 0xfb9a99;
+                      0xe31a1c; 0xfdbf6f; 0xff7f00; 0xcab2d6; 0x6a3d9a;
+                      0xffff99; 0xb15928 |]
+let color =
+  let n = Array.length color_scheme in
+  fun i -> color_scheme.(i mod n)
 
 let paths html repo_commits =
   let num_commits = List.mapi (fun i (_, _, c) -> (i, c)) repo_commits in
@@ -95,7 +101,7 @@ let paths html repo_commits =
     () in
   Cosmetrics.StringMap.iter process_author a;
   H.print html "<div class='chord-graph'>";
-  let colors = List.mapi (fun i _ -> hue(float i /. float n)) repo_commits in
+  let colors = List.mapi (fun i _ -> color i) repo_commits in
   let names = List.map (fun (r,_,_) -> r) repo_commits in
   H.chord html m ~colors ~names ~width:800 ~height:800;
   H.print html "<ul>\n";
