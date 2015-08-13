@@ -270,8 +270,8 @@ let main project remotes =
     H.timeseries html [("Busyness", busy); ("# projects", n_start)]
                  ~y2:[("% Busyness / started projects", busy2)]
                  ~colors:[0x336600; 0xC2C2A3] ~tys:[`Area; `Line]
-                 ~colors2:[0xCC6600] ~tys2:[`Line]
-                 ~ylabel:"# projects busy";
+                 ~colors2:[0xCC6600] ~tys2:[`Line] ~y2min:0.
+                 ~ylabel:"# projects" ~y2label:"% projects";
     paths html repo_commits;
   in
   let global_tables html =

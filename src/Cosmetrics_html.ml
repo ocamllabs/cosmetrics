@@ -62,8 +62,9 @@ let print_serie html i t_merged =
 let rec list_make n v =
   if n <= 0 then [] else v :: list_make (n - 1) v
 
-let timeseries html ?(xlabel="") ?(ylabel="") ?(ty=`Area)
-               ?tys2 ?(colors2=[]) ?(y2=[]) ?tys ~colors ts =
+let timeseries html ?(xlabel="") ?(ty=`Area)
+               ?(y2label="") ?tys2 ?(colors2=[]) ?y2min ?y2max ?(y2=[])
+               ?(ylabel="") ?tys ?ymin ?ymax ~colors ts =
   let n1 = List.length ts in
   let n2 = List.length y2 in
   if List.length colors < n1 then
@@ -139,17 +140,23 @@ let timeseries html ?(xlabel="") ?(ylabel="") ?(ty=`Area)
                     }
                   },
                   y: {
-                    label: %s
-                  },
+                    label: %s," (single_quote xlabel) (single_quote ylabel);
+  (match ymin with Some y -> printf html "min: %g," y
+                 | None -> ());
+  (match ymax with Some y -> printf html "max: %g," y
+                 | None -> ());
+  printf html "   },
                   y2: {
-                    show: %b
-                  }
+                    show: %b,
+                    label: %s," (n2 <> 0) (single_quote y2label);
+  (match y2min with Some y -> printf html "min: %g," y
+                 | None -> ());
+  (match y2max with Some y -> printf html "max: %g," y
+                 | None -> ());
+  printf html "   }
                 }
               })\n\
               </script>\n"
-         (single_quote xlabel)
-         (single_quote ylabel)
-         (n2 <> 0)
 
 
 (** The rows and columns of [m] correspond to the groups.
