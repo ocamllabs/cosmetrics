@@ -122,37 +122,42 @@ let paths html repo_commits =
 
 
 let contribution_order html repo_commits =
+  let module S = Set.Make(String) in
   let num_commits = List.mapi (fun i (_, _, c) -> (i, c)) repo_commits in
-  let a = Cosmetrics.authors_timeseries num_commits in
+  let a_ts = Cosmetrics.authors_timeseries num_commits in
   (* [c.(i).(j)] is the number of people contributing for the first
      time to the repository number [i] as the [j+1]th repository they
      contribute.  So [c.(0)] gives the number of authors who
      commited to each of the repositories as their first contribution.  *)
   let n = List.length repo_commits in
   let c = Array.create_matrix n n 0 in
-  let process_author _ t =
+  let a = Array.create_matrix n n S.empty in
+  let process_author author t =
     let repo_ok = Array.make n true in
     let repo_nth = ref 0 in
     T.iter t (fun _ (repo, _) ->
               if repo_ok.(repo) then (
                 c.(!repo_nth).(repo) <- c.(!repo_nth).(repo) + 1;
+                a.(!repo_nth).(repo) <- S.add author a.(!repo_nth).(repo);
                 incr repo_nth;
                 repo_ok.(repo) <- false;
               )
-             );
-    () in
-  Cosmetrics.StringMap.iter process_author a;
-  let n_authors = float(Cosmetrics.StringMap.cardinal a) in
+             ) in
+  Cosmetrics.StringMap.iter process_author a_ts;
+  let n_authors = float(Cosmetrics.StringMap.cardinal a_ts) in
   let display_table ~nth =
     let c = c.(nth) in
-    let repos = List.mapi (fun i (r,_,_) -> r, c.(i)) repo_commits in
-    let repos = List.sort (fun (_, c1) (_, c2) -> compare (c2:int) c1) repos in
+    let a = a.(nth) in
+    let repos = List.mapi (fun i (r,_,_) -> r, c.(i), a.(i)) repo_commits in
+    let repos = List.sort (fun (_,c1,_) (_,c2,_) -> compare (c2:int) c1) repos in
     H.print html "<table class='contribution-order'>";
     H.printf html "<tr><th colspan='2'>Repo #%d contrib</th></tr>" (nth + 1);
-    List.iter (fun (r,c) ->
-               H.printf html "<tr %s><td>%s</td><td>%d (%.1f%%)</td></tr>\n"
+    List.iter (fun (r,c,a) ->
+               let title = String.concat ", " (S.elements a) in
+               H.printf html "<tr %s><td>%s</td><td title='%s'\
+                              >%d (%.1f%%)</td></tr>\n"
                         (if c = 0 then "class='not-important'" else "")
-                        r c (100. *. float c /. n_authors)
+                        r title c (100. *. float c /. n_authors)
               ) repos;
     H.print html "</table>" in
   H.print html "<table><tr><td>\n";
