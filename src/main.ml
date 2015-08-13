@@ -92,19 +92,21 @@ let paths html repo_commits =
   let process_author _ t =
     (* For each transition to another repo, add a link in [m]. *)
     let prev_repo = ref(-1) in (* no such repo *)
+    let not_avoid = Array.make n true in
     T.iter t (fun _ repo ->
-              if !prev_repo < 0 then prev_repo := repo
-              else if repo <> !prev_repo then (
-                m.(!prev_repo).(repo) <- m.(!prev_repo).(repo) +. 1.;
-                prev_repo := repo;
-              )
+              if not_avoid.(repo) then (
+                if !prev_repo >= 0 then
+                  m.(!prev_repo).(repo) <- m.(!prev_repo).(repo) +. 1.;
+                not_avoid.(repo) <- false;
+              );
+              prev_repo := repo;
              );
     () in
   S.iter process_author a;
   H.print html "<div class='chord-graph'>";
   let colors = List.mapi (fun i _ -> hue(float i /. float n)) repo_commits in
   let names = List.map (fun (r,_,_) -> r) repo_commits in
-  H.chord html m ~colors ~names;
+  H.chord html m ~colors ~names ~width:800 ~height:800;
   H.print html "<ul>\n";
   List.iter2 (fun (r,_,_) c ->
               H.printf html "<li style='padding: 4px'
