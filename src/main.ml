@@ -162,6 +162,25 @@ let sum = function
   | [t] -> t
   | t0 :: tl -> List.fold_left T.sum t0 tl
 
+
+(* Given an array [a] sorted in increasing order and [x] such that
+   [a.(i0) <= x < a.(i1)], find [i] such that [a.(i) <= x < a.(i+1)]. *)
+let rec index cmp a x i0 i1 =
+  let d = i1 - i0 in
+  if d < 2 then i0
+  else let i = i0 + d / 2 in
+       let c = cmp x a.(i) in
+       if c < 0 then index cmp a x i0 i
+       else (* c >= 0 *) index cmp a x i i1
+
+let create_number_projects starts =
+  let starts = Array.of_list(List.sort Calendar.compare starts) in
+  let n = Array.length starts in
+  fun d ->
+  if Calendar.compare d starts.(0) < 0 then 0
+  else if Calendar.compare d starts.(n - 1) >= 0 then n
+  else index Calendar.compare starts d 0 (n - 1) + 1
+
 let main project remotes =
   catch (fun () -> Lwt_unix.mkdir project 0o775)
         (fun _ -> return_unit) >>= fun () ->
@@ -229,14 +248,29 @@ let main project remotes =
     return alv
   in
   let all_commits = List.concat (List.map (fun (_,_,c) -> c) repo_commits) in
-  Lwt_list.map_p process repo_commits >>= fun alvs ->
+  Lwt_list.map_p process repo_commits >>= fun busys ->
   let global_graphs html =
-    let alv = sum alvs in
-    let n = float(List.length alvs) in
-    let alv2 = T.map alv (fun s -> 100. *. s /. n) in
-    H.timeseries html [("Busyness", alv)]
-                 ~y2:[("% Busyness", alv2)]
-                 ~colors:[0x336600] ~colors2:[0x336600]
+    let busy = sum busys in
+    let start_time c =
+      let d = fst(C.Commit.date_range_exn c) in
+      (* Match to the start of the chosen period. *)
+      (* FIXME: We have to take into account that busyness spread in
+         the past.  If we do not want to have a % busyness > 100%, we
+         must shift the date. *)
+      let d = Calendar.make (Calendar.year d)
+                            (Date.int_of_month (Calendar.month d) - 2)
+                            1 0 0 0 in
+      d in
+    let starts = List.map (fun (_,_,c) -> start_time c) repo_commits in
+    let number_projects = create_number_projects starts in
+    let n_start = T.mapi busy (fun d s -> float(number_projects d)) in
+    let busy2 = T.mapi busy (fun d s ->
+                             let n = float(number_projects d) in
+                             if n = 0. then 0. else 100. *. s /. n) in
+    H.timeseries html [("Busyness", busy); ("# projects", n_start)]
+                 ~y2:[("% Busyness / started projects", busy2)]
+                 ~colors:[0x336600; 0xC2C2A3] ~tys:[`Area; `Line]
+                 ~colors2:[0xCC6600] ~tys2:[`Line]
                  ~ylabel:"# projects busy";
     paths html repo_commits;
   in
