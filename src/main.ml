@@ -97,8 +97,21 @@ let paths html repo_commits =
                 not_avoid.(repo) <- false;
               );
               prev_repo := repo;
-             );
-    () in
+             ) in
+  let process_author _ t =
+    let fst_repo = ref(-1) in
+    try T.iter t (fun _ (repo, _) ->
+                  if !fst_repo < 0 then fst_repo := repo
+                  else if repo <> !fst_repo then (
+                    m.(!fst_repo).(repo) <- m.(!fst_repo).(repo) +. 1.;
+                    raise Exit
+                  )
+                 );
+        (* We did not find a contribution to another repo, make a
+           link from the 1st repo to itself. *)
+        m.(!fst_repo).(!fst_repo) <- m.(!fst_repo).(!fst_repo) +. 1.;
+    with Exit -> ()
+  in
   Cosmetrics.StringMap.iter process_author a;
   H.print html "<div class='chord-graph'>";
   let colors = List.mapi (fun i _ -> color i) repo_commits in
