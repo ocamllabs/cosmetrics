@@ -204,19 +204,19 @@ let chord html ?(padding=0.05) ?(width=600) ?(height=600)
                .style('stroke', function(d) { return fill%d(d.index); })
                .attr('d', d3.svg.arc().innerRadius(%g).outerRadius(%g))
                .on('mouseover', fade%d(0.1))
-               .on('mouseout', fade%d(1));\n"
+               .on('mouseout', fade%d(0.9));\n"
          html.i html.i html.i html.i inner_radius outer_radius html.i html.i;
-  printf html "svg%d.append('g').attr('class', 'chord')
+  printf html "svg%d.append('g').attr('class', 'cosmetrics-chord')
                .selectAll('path')
                .data(chord%d.chords)
                .enter().append('path')
                .attr('d', d3.svg.chord().radius(%g))
                .style('fill', function(d) { return fill%d(d.target.index); })
-               .style('opacity', 1);\n"
+               .style('opacity', 0.9);\n"
          html.i html.i inner_radius html.i;
   printf html "function fade%d(opacity) {
                  return function(g, i) {
-                   svg%d.selectAll('.chord path')
+                   svg%d.selectAll('.cosmetrics-chord path')
                    .filter(function(d) { return d.source.index != i \
                                              && d.target.index != i; })
                    .transition()
