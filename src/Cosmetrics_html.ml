@@ -156,7 +156,7 @@ let timeseries html ?(xlabel="") ?(ylabel="") ?(ty=`Area)
     [m.(i).(j)] expresses the relationship from group [i] to group [j]. *)
 let chord html ?(padding=0.05) ?(width=600) ?(height=600)
           ?inner_radius ?outer_radius
-          ~colors (m: float array array) =
+          ?names ~colors (m: float array array) =
   let n = Array.length m in
   if List.length colors < n then
     invalid_arg "Cosmetrics_html.chord: too few colors colors";
@@ -181,6 +181,12 @@ let chord html ?(padding=0.05) ?(width=600) ?(height=600)
   printf html "var fill%d = d3.scale.ordinal().domain(d3.range(%d))
                .range([%s]);\n"
          html.i (List.length colors) (String.concat ", " colors);
+  (match names with
+   | Some names ->
+      let names = List.map single_quote names in
+      printf html "var chord_names%d = [ %s ];"
+             html.i (String.concat ", " names)
+   | None -> ());
   printf html "var svg%d = d3.select('#cosmetrics%d').append('svg')
                .attr('width', %d).attr('height', %d)
                .append('g')
@@ -198,9 +204,13 @@ let chord html ?(padding=0.05) ?(width=600) ?(height=600)
                .style('fill', function(d) { return fill%d(d.index); })
                .style('stroke', function(d) { return fill%d(d.index); })
                .attr('d', d3.svg.arc().innerRadius(%g).outerRadius(%g))
-               .on('mouseover', fade%d(0.1))
-               .on('mouseout', fade%d(0.9));\n"
+               .on('mouseover', fade%d(0.05))
+               .on('mouseout', fade%d(0.9))"
          html.i html.i html.i html.i inner_radius outer_radius html.i html.i;
+  if names <> None then
+    printf html ".append('title').text(function(d, i) {
+                 return chord_names%d[i]; })" html.i;
+  print html ";\n";
   printf html "svg%d.append('g').attr('class', 'cosmetrics-chord')
                .selectAll('path')
                .data(chord%d.chords)

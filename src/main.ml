@@ -101,9 +101,10 @@ let paths html repo_commits =
              );
     () in
   S.iter process_author a;
-  let colors = List.mapi (fun i _ -> hue(float i /. float n)) repo_commits in
   H.print html "<div class='chord-graph'>";
-  H.chord html m ~colors;
+  let colors = List.mapi (fun i _ -> hue(float i /. float n)) repo_commits in
+  let names = List.map (fun (r,_,_) -> r) repo_commits in
+  H.chord html m ~colors ~names;
   H.print html "<ul>\n";
   List.iter2 (fun (r,_,_) c ->
               H.printf html "<li style='padding: 4px'
@@ -209,5 +210,5 @@ let rec take n = function
 
 let () =
   let repos = Mirage_repo.all in
-  let repos = take 10 repos in
+  (* let repos = take 10 repos in *)
   Lwt_main.run (main "mirage" repos)
