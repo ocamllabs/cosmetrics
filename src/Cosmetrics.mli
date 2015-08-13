@@ -110,6 +110,13 @@ val history : ?repo_dir: string -> string -> History.t Lwt.t
     not to fetch again the repository).  The sudirectory name is based
     on the basename of [remote_uri]. *)
 
+val authors_timeseries :
+  ('r * Commit.t list) list -> ('r * Commit.t) Timeseries.t StringMap.t
+(** [authors_timeseries repo_commits]: given a list of repositories
+    names (represented as type ['r]) and commits, return a map that
+    gives, for each author, the time-series of its commits with the
+    repository information. *)
+
 module Summary : sig
   type t = {
       n: int;     (** number of commits *)

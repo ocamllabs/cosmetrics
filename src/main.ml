@@ -72,20 +72,11 @@ let hue h =
   | 5. -> 0xFF0000 lor (255 - f)
   | _ -> assert false
 
+
+
 let paths html repo_commits =
-  let module S = Cosmetrics.StringMap in
   let num_commits = List.mapi (fun i (_, _, c) -> (i, c)) repo_commits in
-  (* Map [a]: author → repo time-series *)
-  let update_author repo m c =
-    let t_author = try S.find (C.Commit.author c) m
-                   with Not_found -> T.empty in
-    (* FIXME: although unlikely, one should handle better when 2
-       commits happen at the very same time. *)
-    let t_author = T.add t_author (C.Commit.date c) repo in
-    S.add (C.Commit.author c) t_author m in
-  let add_from_repo m (repo, commits) =
-    List.fold_left (update_author repo) m commits in
-  let a = List.fold_left add_from_repo S.empty num_commits in
+  let a = Cosmetrics.authors_timeseries num_commits in
   (* Create the matrix *)
   let n = List.length repo_commits in
   let m = Array.create_matrix n n 0. in
@@ -93,7 +84,7 @@ let paths html repo_commits =
     (* For each transition to another repo, add a link in [m]. *)
     let prev_repo = ref(-1) in (* no such repo *)
     let not_avoid = Array.make n true in
-    T.iter t (fun _ repo ->
+    T.iter t (fun _ (repo, _) ->
               if not_avoid.(repo) then (
                 if !prev_repo >= 0 then
                   m.(!prev_repo).(repo) <- m.(!prev_repo).(repo) +. 1.;
@@ -102,7 +93,7 @@ let paths html repo_commits =
               prev_repo := repo;
              );
     () in
-  S.iter process_author a;
+  Cosmetrics.StringMap.iter process_author a;
   H.print html "<div class='chord-graph'>";
   let colors = List.mapi (fun i _ -> hue(float i /. float n)) repo_commits in
   let names = List.map (fun (r,_,_) -> r) repo_commits in

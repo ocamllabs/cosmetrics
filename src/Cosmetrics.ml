@@ -266,6 +266,21 @@ let history ?(repo_dir="repo") remote_uri =
 
 module StringMap = Map.Make(String)
 
+let authors_timeseries repo_commits =
+  (* Map [m]: author → repo time-series *)
+  let update_author repo m c =
+    let t_author = try StringMap.find (Commit.author c) m
+                   with Not_found -> Timeseries.empty in
+    (* FIXME: although unlikely, one should handle better when 2
+       commits happen at the very same time. *)
+    let t_author = Timeseries.add t_author (Commit.date c) (repo, c) in
+    StringMap.add (Commit.author c) t_author m in
+  let add_from_repo m (repo, commits) =
+    List.fold_left (update_author repo) m commits in
+  List.fold_left add_from_repo StringMap.empty repo_commits
+
+
+
 module Summary = struct
   type t = {
       n: int;
