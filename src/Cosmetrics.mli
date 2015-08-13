@@ -45,7 +45,8 @@ module Timeseries : sig
       @raise Not_found if the date is not present in the time-series.  *)
 
   val add : 'a t -> Calendar.t -> 'a -> 'a t
-  (** Add a date and associated value to the time-series. *)
+  (** Add a date and associated value to the time-series.  If the date
+      already exists, its previous value is replaced. *)
 
   val empty : 'a t
   ;;

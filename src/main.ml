@@ -60,13 +60,58 @@ let graph html ?(per=`Month) ?(busyness=true) ~start ~stop repo commits =
   )
   else T.empty
 
+let hue h =
+  let f, hi = modf (abs_float h *. 6.) in
+  let f = truncate (256. *. f) in (* 0. ≤ f < 1.  =>  0 ≤ f ≤ 255 *)
+  match mod_float hi 6. with
+  | 0. -> 0xFF0000 lor (f lsl 8)
+  | 1. -> 0x00FF00 lor ((255 - f) lsl 16)
+  | 2. -> 0x00FF00 lor f
+  | 3. -> 0x0000FF lor ((255 - f) lsl 8)
+  | 4. -> 0x0000FF lor (f lsl 16)
+  | 5. -> 0xFF0000 lor (255 - f)
+  | _ -> assert false
+
 let paths html repo_commits =
   let module S = Cosmetrics.StringMap in
-  (* Map [m]: author → repo time-series *)
+  let num_commits = List.mapi (fun i (_, _, c) -> (i, c)) repo_commits in
+  (* Map [a]: author → repo time-series *)
+  let update_author repo m c =
+    let t_author = try S.find (C.Commit.author c) m
+                   with Not_found -> T.empty in
+    (* FIXME: although unlikely, one should handle better when 2
+       commits happen at the very same time. *)
+    let t_author = T.add t_author (C.Commit.date c) repo in
+    S.add (C.Commit.author c) t_author m in
   let add_from_repo m (repo, commits) =
-    List.fold_left (fun m c -> T.add m (C.Commit.date c) repo) m commits in
-  let m = List.fold_left add_from_repo T.empty repo_commits in
-  m
+    List.fold_left (update_author repo) m commits in
+  let a = List.fold_left add_from_repo S.empty num_commits in
+  (* Create the matrix *)
+  let n = List.length repo_commits in
+  let m = Array.create_matrix n n 0. in
+  let process_author _ t =
+    (* For each transition to another repo, add a link in [m]. *)
+    let prev_repo = ref(-1) in (* no such repo *)
+    T.iter t (fun _ repo ->
+              if !prev_repo < 0 then prev_repo := repo
+              else if repo <> !prev_repo then (
+                m.(!prev_repo).(repo) <- m.(!prev_repo).(repo) +. 1.;
+                prev_repo := repo;
+              )
+             );
+    () in
+  S.iter process_author a;
+  let colors = List.mapi (fun i _ -> hue(float i /. float n)) repo_commits in
+  H.print html "<div class='chord-graph'>";
+  H.chord html m ~colors;
+  H.print html "<ul>\n";
+  List.iter2 (fun (r,_,_) c ->
+              H.printf html "<li style='padding: 4px'
+                             ><span style='background-color: #%06X; \
+                             padding: 5px'
+                             >%s</span></li>" c r
+             ) repo_commits colors;
+  H.print html "</ul>\n</div>\n"
 
 
 let date_min d1 d2 =
@@ -123,6 +168,10 @@ let main project remotes =
                     width: 60%;
                     height: 30ex;
                   }
+                  div.chord-graph {
+                    float: right;
+                    width: 70%;
+                  }
                   div.chord {
                     float: right;
                   }
@@ -147,11 +196,7 @@ let main project remotes =
                  ~y2:[("% Busyness", alv2)]
                  ~colors:[0x336600] ~colors2:[0x336600]
                  ~ylabel:"# projects busy";
-    H.chord html [| [| 11975.; 5871.; 8916.; 2868. |];
-                    [| 1951.; 10048.; 2060.; 6171. |];
-                    [| 8010.; 16145.; 8090.; 8045. |];
-                    [| 1013.;   990.;  940.; 6907. |] |]
-            ~colors:[0; 0xFFDD89; 0x957244; 0xF26223]
+    paths html repo_commits;
   in
   process ("all repositories", "index.html", all_commits)
           ~busyness:false
@@ -164,5 +209,5 @@ let rec take n = function
 
 let () =
   let repos = Mirage_repo.all in
-  let repos = take 5 repos in
+  let repos = take 10 repos in
   Lwt_main.run (main "mirage" repos)
