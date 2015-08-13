@@ -233,6 +233,7 @@ let chord html ?(padding=0.05) ?(width=600) ?(height=600)
                    else {
                      q.style('stroke',
                              function(d) { return fill%d(d.target.index); })
+                      .style('opacity', 0.9);
                    };
                  };
                }\n" html.i html.i html.i;

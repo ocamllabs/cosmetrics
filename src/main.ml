@@ -108,6 +108,49 @@ let paths html repo_commits =
   H.print html "</ul>\n</div>\n"
 
 
+let contribution_order html repo_commits =
+  let num_commits = List.mapi (fun i (_, _, c) -> (i, c)) repo_commits in
+  let a = Cosmetrics.authors_timeseries num_commits in
+  (* [c.(i).(j)] is the number of people contributing for the first
+     time to the repository number [i] as the [j+1]th repository they
+     contribute.  So [c.(0)] gives the number of authors who
+     commited to each of the repositories as their first contribution.  *)
+  let n = List.length repo_commits in
+  let c = Array.create_matrix n n 0 in
+  let process_author _ t =
+    let repo_ok = Array.make n true in
+    let repo_nth = ref 0 in
+    T.iter t (fun _ (repo, _) ->
+              if repo_ok.(repo) then (
+                c.(!repo_nth).(repo) <- c.(!repo_nth).(repo) + 1;
+                incr repo_nth;
+                repo_ok.(repo) <- false;
+              )
+             );
+    () in
+  Cosmetrics.StringMap.iter process_author a;
+  let n_authors = float(Cosmetrics.StringMap.cardinal a) in
+  let display_table ~nth =
+    let c = c.(nth) in
+    let repos = List.mapi (fun i (r,_,_) -> r, c.(i)) repo_commits in
+    let repos = List.sort (fun (_, c1) (_, c2) -> compare (c2:int) c1) repos in
+    H.print html "<table class='contribution-order'>";
+    H.printf html "<tr><th colspan='2'>Repo #%d contrib</th></tr>" (nth + 1);
+    List.iter (fun (r,c) ->
+               H.printf html "<tr %s><td>%s</td><td>%d (%.1f%%)</td></tr>\n"
+                        (if c = 0 then "class='not-important'" else "")
+                        r c (100. *. float c /. n_authors)
+              ) repos;
+    H.print html "</table>" in
+  H.print html "<table><tr><td>\n";
+  display_table ~nth:0;
+  H.print html "</td><td>";
+  display_table ~nth:1;
+  H.print html "</td><td>";
+  display_table ~nth:2;
+  H.print html "</td></tr></table>\n"
+
+
 let date_min d1 d2 =
   if Calendar.compare d1 d2 <= 0 then d1 else d2
 
@@ -154,7 +197,8 @@ let main project remotes =
     let link (repo, fname, _) =
       H.printf html "<a href=\"%s\">%s</a>\n" fname repo in
     List.iter link repo_commits in
-  let process ?(busyness=true) ?(more=fun _ -> ()) (repo, fname, commits) =
+  let process ?(busyness=true) ?(more_graphs=fun _ -> ()) ?(more=fun _ -> ())
+              (repo, fname, commits) =
     let html = H.make () in
     H.style html "div.graph {
                   float: right;
@@ -169,14 +213,18 @@ let main project remotes =
                   div.chord {
                     float: right;
                   }
+                  .not-important {
+                    color: #939393;
+                  }
                   .main {
                     color: #336600;
                   }";
     add_links html;
     H.printf html "<h1>Stats for %s (project = %s)</h1>" repo project;
     let alv = graph html ~start ~stop repo commits ~busyness in
-    more html;
+    more_graphs html;
     add_stats html repo commits;
+    more html;
     H.write html fname >>= fun () ->
     return alv
   in
@@ -192,9 +240,13 @@ let main project remotes =
                  ~ylabel:"# projects busy";
     paths html repo_commits;
   in
+  let global_tables html =
+    contribution_order html repo_commits;
+  in
   process ("all repositories", "index.html", all_commits)
           ~busyness:false
-          ~more:global_graphs
+          ~more_graphs:global_graphs
+          ~more:global_tables
   >>= fun _ -> return_unit
 
 let rec take n = function
