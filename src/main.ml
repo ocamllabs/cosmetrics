@@ -103,15 +103,9 @@ let paths html repo_commits =
   H.print html "<div class='chord-graph'>";
   let colors = List.mapi (fun i _ -> color i) repo_commits in
   let names = List.map (fun (r,_,_) -> r) repo_commits in
-  H.chord html m ~colors ~names ~width:800 ~height:800;
-  H.print html "<ul>\n";
-  List.iter2 (fun (r,_,_) c ->
-              H.printf html "<li style='padding: 4px'
-                             ><span style='background-color: #%06X; \
-                             padding: 5px'
-                             >%s</span></li>" c r
-             ) repo_commits colors;
-  H.print html "</ul>\n</div>\n"
+  H.chord html m ~colors ~names ~width:1000 ~height:1000
+          ~inner_radius:300.;
+  H.print html "</div>\n"
 
 
 let contribution_order html repo_commits =

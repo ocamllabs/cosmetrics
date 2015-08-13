@@ -156,7 +156,7 @@ let timeseries html ?(xlabel="") ?(ylabel="") ?(ty=`Area)
     [m.(i).(j)] expresses the relationship from group [i] to group [j]. *)
 let chord html ?(padding=0.05) ?(width=600) ?(height=600)
           ?inner_radius ?outer_radius
-          ?names ~colors (m: float array array) =
+          ?names ?tooltips ~colors (m: float array array) =
   let n = Array.length m in
   if List.length colors < n then
     invalid_arg "Cosmetrics_html.chord: too few colors colors";
@@ -183,9 +183,19 @@ let chord html ?(padding=0.05) ?(width=600) ?(height=600)
          html.i (List.length colors) (String.concat ", " colors);
   (match names with
    | Some names ->
+      if List.length names < n then
+        invalid_arg "Cosmetrics_html.chord: too few names";
       let names = List.map single_quote names in
       printf html "var chord_names%d = [ %s ];"
              html.i (String.concat ", " names)
+   | None -> ());
+  (match tooltips with
+   | Some tooltips ->
+      if List.length tooltips < n then
+        invalid_arg "Cosmetrics_html.chord: too few tooltips";
+      let tooltips = List.map single_quote tooltips in
+      printf html "var chord_tooltips%d = [ %s ];"
+             html.i (String.concat ", " tooltips)
    | None -> ());
   printf html "var svg%d = d3.select('#cosmetrics%d').append('svg')
                .attr('width', %d).attr('height', %d)
@@ -193,7 +203,8 @@ let chord html ?(padding=0.05) ?(width=600) ?(height=600)
                .attr('transform', 'translate(%d, %d)');\n"
          html.i html.i width height (width / 2) (height / 2);
   let inner_radius = match inner_radius with
-    | None -> float(min width height) *. 0.41
+    | None -> float(min width height)
+              *. (if names <> None then 0.35 else 0.41)
     | Some r -> r in
   let outer_radius = match outer_radius with
     | None -> inner_radius *. 1.1
@@ -207,9 +218,9 @@ let chord html ?(padding=0.05) ?(width=600) ?(height=600)
                .on('mouseover', fade%d(0.01, true))
                .on('mouseout', fade%d(0.9, false))"
          html.i html.i html.i html.i inner_radius outer_radius html.i html.i;
-  if names <> None then
+  if tooltips <> None then
     printf html ".append('title').text(function(d, i) {
-                 return chord_names%d[i]; })" html.i;
+                 return chord_tooltips%d[i]; })" html.i;
   print html ";\n";
   printf html "svg%d.append('g').attr('class', 'cosmetrics-chord')
                .selectAll('path')
@@ -219,6 +230,23 @@ let chord html ?(padding=0.05) ?(width=600) ?(height=600)
                .style('fill', function(d) { return fill%d(d.target.index); })
                .style('opacity', 0.9);\n"
          html.i html.i inner_radius html.i;
+  if names <> None then (
+    printf html "var chord_ticks%d = svg%d.append('g').selectAll('g')
+                 .data(chord%d.groups).enter().append('g');\n"
+           html.i html.i html.i;
+    printf html
+           "chord_ticks%d.append('text')
+            .each(function(d) { d.angle = (d.startAngle + d.endAngle)/2; })
+            .attr('dy', '.35em')
+            .attr('text-anchor',
+                  function(d) { return d.angle > Math.PI ? 'end' : null; })
+            .attr('transform', function(d) {
+                  return 'rotate(' + (d.angle * 180 / Math.PI - 90) + ')'
+                         + 'translate(' + (%g * 1.02) + ')'
+                         + (d.angle > Math.PI ? 'rotate(180)' : '');  })
+            .text(function(d) { return chord_names%d[d.index]; });\n"
+           html.i outer_radius html.i;
+  );
   printf html "function fade%d(opacity, over) {
                  return function(g, i) {
                    var p = svg%d.selectAll('.cosmetrics-chord path');
