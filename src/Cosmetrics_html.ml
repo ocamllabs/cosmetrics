@@ -5,21 +5,16 @@ open Lwt
 open CalendarLib
 module T = Cosmetrics.Timeseries
 
-let escape_single_quote s =
-  let n = ref 0 in (* number of quotes *)
+let single_quote s =
+  let b = Buffer.create (2 + String.length s) in
+  Buffer.add_char b '\'';
   for i = 0 to String.length s - 1 do
-    if String.unsafe_get s i = '\'' then incr n
+    let c = String.unsafe_get s i in
+    if c = '\'' then Buffer.add_char b '\\';
+    Buffer.add_char b c
   done;
-  if !n = 0 then s
-  else (
-    let b = Buffer.create (!n + String.length s) in
-    for i = 0 to String.length s - 1 do
-      let c = String.unsafe_get s i in
-      if c = '\'' then Buffer.add_char b '\\';
-      Buffer.add_char b c
-    done;
-    Buffer.contents b
-  )
+  Buffer.add_char b '\'';
+  Buffer.contents b
 
 type html = {
     mutable style: string list;
@@ -115,7 +110,7 @@ let timeseries html ?(xlabel="") ?(ylabel="") ?(ty=`Area)
   print html "],\n\
               names: {\n";
   let print_name i name =
-    printf html "data%d: '%s',\n" i (escape_single_quote name) in
+    printf html "data%d: %s,\n" i (single_quote name) in
   List.iteri (fun i (name, _) -> print_name i name) ts;
   List.iteri (fun i (name, _) -> print_name (n1 + i) name) y2;
   print html "},\n\
@@ -140,11 +135,11 @@ let timeseries html ?(xlabel="") ?(ylabel="") ?(ty=`Area)
                       format: '%%Y-%%m',
                       fit: true,
                       count: 20,
-                      label: '%s',
+                      label: %s,
                     }
                   },
                   y: {
-                    label: '%s'
+                    label: %s
                   },
                   y2: {
                     show: %b
@@ -152,8 +147,8 @@ let timeseries html ?(xlabel="") ?(ylabel="") ?(ty=`Area)
                 }
               })\n\
               </script>\n"
-         (escape_single_quote xlabel)
-         (escape_single_quote ylabel)
+         (single_quote xlabel)
+         (single_quote ylabel)
          (n2 <> 0)
 
 
