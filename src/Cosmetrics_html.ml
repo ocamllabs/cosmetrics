@@ -204,8 +204,8 @@ let chord html ?(padding=0.05) ?(width=600) ?(height=600)
                .style('fill', function(d) { return fill%d(d.index); })
                .style('stroke', function(d) { return fill%d(d.index); })
                .attr('d', d3.svg.arc().innerRadius(%g).outerRadius(%g))
-               .on('mouseover', fade%d(0.05))
-               .on('mouseout', fade%d(0.9))"
+               .on('mouseover', fade%d(0.01, true))
+               .on('mouseout', fade%d(0.9, false))"
          html.i html.i html.i html.i inner_radius outer_radius html.i html.i;
   if names <> None then
     printf html ".append('title').text(function(d, i) {
@@ -219,15 +219,23 @@ let chord html ?(padding=0.05) ?(width=600) ?(height=600)
                .style('fill', function(d) { return fill%d(d.target.index); })
                .style('opacity', 0.9);\n"
          html.i html.i inner_radius html.i;
-  printf html "function fade%d(opacity) {
+  printf html "function fade%d(opacity, over) {
                  return function(g, i) {
-                   svg%d.selectAll('.cosmetrics-chord path')
-                   .filter(function(d) { return d.source.index != i \
-                                             && d.target.index != i; })
+                   var p = svg%d.selectAll('.cosmetrics-chord path');
+                   p.filter(function(d) { return d.source.index != i \
+                                              && d.target.index != i; })
                    .transition()
                    .style('opacity', opacity);
+                   var q = p.filter(function(d) { return d.source.index == i \
+                                                      && d.target.index != i; })
+                   .transition();
+                   if (over) { q.style('stroke', 'black'); }
+                   else {
+                     q.style('stroke',
+                             function(d) { return fill%d(d.target.index); })
+                   };
                  };
-               }\n" html.i html.i;
+               }\n" html.i html.i html.i;
   print html "</script>\n"
 
 
