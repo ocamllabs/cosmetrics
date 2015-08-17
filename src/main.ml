@@ -306,6 +306,7 @@ let rec take n = function
   | x :: tl -> if n <= 0 then [] else x :: take (n - 1) tl
 
 let () =
-  let repos = Mirage_repo.all in
-  (* let repos = take 10 repos in *)
-  Lwt_main.run (main "mirage" repos)
+  (* let repos = Mirage_repo.all in *)
+  (* (\* let repos = take 10 repos in *\) *)
+  (* Lwt_main.run (main "mirage" repos) *)
+  ignore(Cosmetrics_opam.git ())

@@ -12,8 +12,10 @@ Plugins:     META (0.4), StdFiles (0.4)
 Library "cosmetrics"
   Path:         src/
   Modules:      Cosmetrics
-  #InternalModules: 
-  BuildDepends: irmin.unix, git, ocamlgraph, calendar
+  InternalModules: Cosmetrics_html, Cosmetrics_opam
+  BuildDepends: irmin.unix (>= 0.9.9), git, zip, nocrypto,
+                ocamlgraph, calendar,
+                opam-lib.client (>= 1.2 && < 1.3), str
   BuildTools:   ocamlbuild
 
 Executable cosmetrics

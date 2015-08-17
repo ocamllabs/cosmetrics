@@ -3,3 +3,4 @@ B _build/src/
 PKG irmin irmin.unix
 PKG ocamlgraph
 PKG calendar
+PKG opam-lib.client
