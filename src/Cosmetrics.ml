@@ -248,7 +248,13 @@ let map_history t h0 =
   let h = Irmin.History.fold_edges add_edge h0 h in
   return h
 
+
+let from_github = Str.regexp "https?://github.com/"
+
 let history ?(repo_dir="repo") remote_uri =
+  (* Work around HTTPS irmin bug. *)
+  let remote_uri =
+    Str.replace_first from_github "git://github.com/" remote_uri in
   let dir = Filename.basename remote_uri in
   let dir = try Filename.chop_extension dir with _ -> dir in
   let root = Filename.concat repo_dir dir in
