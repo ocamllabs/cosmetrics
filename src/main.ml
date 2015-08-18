@@ -85,7 +85,7 @@ let paths html repo_commits =
   let a = Cosmetrics.authors_timeseries num_commits in
   (* Create the matrix *)
   let n = List.length repo_commits in
-  let m = Array.create_matrix n n 0. in
+  let m = Array.make_matrix n n 0. in
   let process_author _ t =
     (* For each transition to another repo, add a link in [m]. *)
     let prev_repo = ref(-1) in (* no such repo *)
@@ -130,8 +130,8 @@ let contribution_order html repo_commits =
      contribute.  So [c.(0)] gives the number of authors who
      commited to each of the repositories as their first contribution.  *)
   let n = List.length repo_commits in
-  let c = Array.create_matrix n n 0 in
-  let a = Array.create_matrix n n S.empty in
+  let c = Array.make_matrix n n 0 in
+  let a = Array.make_matrix n n S.empty in
   let process_author author t =
     let repo_ok = Array.make n true in
     let repo_nth = ref 0 in
