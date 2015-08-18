@@ -199,14 +199,16 @@ let create_number_projects starts =
   else if Calendar.compare d starts.(n - 1) >= 0 then n
   else index Calendar.compare starts d 0 (n - 1) + 1
 
+
 let main project remotes =
   catch (fun () -> Lwt_unix.mkdir project 0o775)
         (fun _ -> return_unit) >>= fun () ->
   Lwt_unix.chdir project >>= fun () ->
   Lwt_io.printf "Updating repositories... " >>= fun () ->
-  Lwt_list.map_p (fun repo ->
+  Lwt_list.map_p (fun (pkg, repo) ->
                   Cosmetrics.history repo >>= fun commits ->
-                  return (repo, Cosmetrics.commits commits)
+                  return (OpamPackage.to_string pkg,
+                          Cosmetrics.commits commits)
                  ) remotes
   >>= fun repo_commits ->
   Lwt_io.printlf "done.%!" >>= fun () ->
@@ -221,11 +223,7 @@ let main project remotes =
     | [] -> invalid_arg "Empty list of repositories" in
 
   let repo_commits =
-    let shorten repo =
-      let repo = Filename.basename repo in
-      try Filename.chop_extension repo with _ -> repo in
-    List.map (fun (r,c) -> let r = shorten r in (r, r ^ ".html", c))
-             repo_commits in
+    List.map (fun (r,c) -> (r, r ^ ".html", c)) repo_commits in
   let repo_commits =
     List.sort (fun (n1,_,_) (n2,_,_) -> String.compare n1 n2) repo_commits in
 
@@ -306,7 +304,9 @@ let rec take n = function
   | x :: tl -> if n <= 0 then [] else x :: take (n - 1) tl
 
 let () =
-  (* let repos = Mirage_repo.all in *)
-  (* (\* let repos = take 10 repos in *\) *)
-  (* Lwt_main.run (main "mirage" repos) *)
-  ignore(Cosmetrics_opam.git ())
+  let select pkg opam =
+    List.mem "org:mirage" (OpamFile.OPAM.tags opam) in
+  let repos = Cosmetrics_opam.git ~select () in
+  Printf.printf "# repos: %d\n" (List.length repos);
+  (* let repos = take 10 repos in *)
+  Lwt_main.run (main "mirage" repos)
