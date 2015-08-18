@@ -68,6 +68,8 @@ let write_opam ~name ~version ~git opam =
   let opam = OpamFile.OPAM.with_dev_repo opam (Some(Git(git, None))) in
   OpamFile.OPAM.write opam_file opam
 
+let write_opam ~name ~version ~git opam = ()
+
 let rec find_map_exn l f =
   match l with
   | [] -> raise Not_found
@@ -75,7 +77,7 @@ let rec find_map_exn l f =
                | Some y -> y
                | None -> find_map_exn tl f
 
-let git ?(select=fun _ _ -> true) ?(guess_git=guess_git) () =
+let git ?(verbose=false) ?(select=fun _ _ -> true) ?(guess_git=guess_git) () =
   let module S = Cosmetrics.StringMap in
   let pkgs = ref S.empty in
   let guess_vcs pkg opam url =
@@ -99,33 +101,42 @@ let git ?(select=fun _ _ -> true) ?(guess_git=guess_git) () =
                     | None -> Other (pkg, opam))
                 | None -> Other (pkg, opam)
       in
-      try let (version', c') = S.find name !pkgs in
+      try let (pkg', c') = S.find name !pkgs in
           (* Keep the latest version *)
+          let version' = OpamPackage.version pkg' in
           if OpamPackage.Version.compare version version' > 0 then
-            pkgs := S.add name (version, c) !pkgs
+            pkgs := S.add name (pkg, c) !pkgs
       with Not_found ->
-        pkgs := S.add name (version, c) !pkgs
+        pkgs := S.add name (pkg, c) !pkgs
     )
   in
   iter_packages guess_vcs;
-  let n_pkgs = S.cardinal !pkgs in
-  printf "Total # pkgs: %d\n" n_pkgs;
-  let n_git = ref 0
-  and n_vcs = ref 0
-  and no_email = ref 0 in
-  S.iter (fun _ (_, c) ->
-          match c with
-          | VCS(Git _) -> incr n_git
-          | VCS _ -> incr n_vcs
-          | Other (pkg, opam) ->
-             if OpamFile.OPAM.maintainer opam = [] then
-               incr no_email
-             else (
-               let name = OpamPackage.(Name.to_string(name pkg)) in
-               let version = OpamPackage.(Version.to_string (version pkg)) in
-               let email = String.concat ", " (OpamFile.OPAM.maintainer opam) in
-               eprintf "• No VCS: %s %s → %s\n" name version email
-             )
-         ) !pkgs;
-  printf "# Git: %d\n# other VCS: %d\n# no VCS: %d (including no email: %d)\n"
-         !n_git !n_vcs (n_pkgs - !n_git - !n_vcs) !no_email
+  if verbose then (
+    let n_pkgs = S.cardinal !pkgs in
+    printf "Total # pkgs: %d\n" n_pkgs;
+    let n_git = ref 0
+    and n_vcs = ref 0
+    and no_email = ref 0 in
+    let count _ (_, c) =
+      match c with
+      | VCS(Git _) -> incr n_git
+      | VCS _ -> incr n_vcs
+      | Other (pkg, opam) ->
+         if OpamFile.OPAM.maintainer opam = [] then
+           incr no_email
+         else (
+           let name = OpamPackage.(Name.to_string(name pkg)) in
+           let version = OpamPackage.(Version.to_string (version pkg)) in
+           let email = String.concat ", " (OpamFile.OPAM.maintainer opam) in
+           eprintf "• No VCS: %s %s → %s\n" name version email
+         ) in
+    S.iter count !pkgs;
+    printf "# Git: %d\n# other VCS: %d\n\
+            # no VCS: %d (including no email: %d)\n%!"
+           !n_git !n_vcs (n_pkgs - !n_git - !n_vcs) !no_email;
+  );
+  let pkgs = S.filter (fun _  (_, c) -> match c with VCS(Git _) -> true
+                                                 | _ -> false) !pkgs in
+  S.fold (fun _ x l -> match x with
+                     | (pkg, VCS(Git (g, _))) -> (pkg, g) :: l
+                     | _ -> assert false) pkgs []
