@@ -13,7 +13,7 @@ Library "cosmetrics"
   Path:         src/
   Modules:      Cosmetrics
   InternalModules: Cosmetrics_html, Cosmetrics_opam
-  BuildDepends: irmin.unix (>= 0.9.9), git, zip, nocrypto,
+  BuildDepends: irmin.unix (>= 0.9.9), git, zip, nocrypto, cohttp,
                 ocamlgraph, calendar,
                 opam-lib.client (>= 1.2 && < 1.3), str
   BuildTools:   ocamlbuild
