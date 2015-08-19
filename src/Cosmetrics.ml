@@ -252,7 +252,7 @@ let map_history t h0 =
 let from_github = Str.regexp "https?://github.com/"
 
 let history ?(repo_dir="repo") remote_uri =
-  (* Work around HTTPS irmin bug. *)
+  (* Work around HTTPS irmin bug: https://github.com/mirage/irmin/issues/259 *)
   let remote_uri =
     Str.replace_first from_github "git://github.com/" remote_uri in
   let dir = Filename.basename remote_uri in
@@ -263,9 +263,24 @@ let history ?(repo_dir="repo") remote_uri =
   let config = Irmin_unix.Irmin_git.config ~root ~bare:true () in
   Irmin.create store config Irmin_unix.task >>= fun t ->
   let upstream = Irmin.remote_uri remote_uri in
-  catch (fun () -> Irmin.pull_exn (t "Updating") upstream `Update)
-        (fun e -> Lwt_io.printlf "Fail pull %s: %s"
-                               remote_uri (Printexc.to_string e))
+  (* Irmin Git is using too much memory for some repos.
+     https://github.com/mirage/irmin/issues/263  Use Git to do the
+     initial cloning. *)
+  (if Sys.file_exists root then
+     catch (fun () -> Irmin.pull_exn (t "Updating") upstream `Update)
+           (fun e -> Lwt_io.printlf "Fail pull %s: %s"
+                                  remote_uri (Printexc.to_string e))
+   else (
+     (* Initial cloning, use git. *)
+     let cmd = Printf.sprintf "git clone %s %s" remote_uri root in
+     let cmd = "", [| "sh"; "-c"; cmd |] in
+     Lwt_process.exec cmd >>= fun st ->
+     match st with
+     | Unix.WEXITED 0 -> return_unit
+     | Unix.WEXITED n -> Lwt_io.printlf "Git %s exit %d" remote_uri n
+     | Unix.WSIGNALED n -> Lwt_io.printlf "Git killed by signal %d" n
+     | Unix.WSTOPPED n -> Lwt_io.printlf "Git stopped by signal %d" n
+   ))
   >>= fun () ->
   Irmin.history (t "history") >>= fun h ->
   map_history t h
