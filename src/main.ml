@@ -200,16 +200,34 @@ let create_number_projects starts =
   else index Calendar.compare starts d 0 (n - 1) + 1
 
 
+let rec list_map_loop n_avail f l =
+  match l with
+  | [] -> Lwt.return_nil
+  | x :: l ->
+     decr n_avail;
+     let tx = f x >>= fun y -> incr n_avail; return y in
+     if !n_avail > 0 then
+       let tl = list_map_loop n_avail f l in
+       tx >>= fun x ->  tl >|= fun l ->  x :: l
+     else
+       (* Serialize the next call *)
+       tx >>= fun x -> list_map_loop n_avail f l >|= fun l -> x :: l
+
+let list_map_p ?(max=50) f l =
+  let n_avail = ref max in
+  list_map_loop n_avail f l
+
+
 let main project remotes =
   catch (fun () -> Lwt_unix.mkdir project 0o775)
         (fun _ -> return_unit) >>= fun () ->
   Lwt_unix.chdir project >>= fun () ->
   Lwt_io.printf "Updating repositories... " >>= fun () ->
-  Lwt_list.map_p (fun (pkg, repo) ->
+  list_map_p (fun (pkg, repo) ->
                   Cosmetrics.history repo >>= fun commits ->
                   return (OpamPackage.to_string pkg,
                           Cosmetrics.commits commits)
-                 ) remotes
+             ) remotes
   >>= fun repo_commits ->
   Lwt_io.printlf "done.%!" >>= fun () ->
 
