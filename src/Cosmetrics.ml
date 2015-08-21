@@ -258,29 +258,28 @@ let history ?(repo_dir="repo") remote_uri =
   let dir = Filename.basename remote_uri in
   let dir = try Filename.chop_extension dir with _ -> dir in
   let root = Filename.concat repo_dir dir in
-  let store = Irmin.basic (module Irmin_unix.Irmin_git.FS)
-                          (module Irmin.Contents.String) in
-  let config = Irmin_unix.Irmin_git.config ~root ~bare:true () in
-  Irmin.create store config Irmin_unix.task >>= fun t ->
-  let upstream = Irmin.remote_uri remote_uri in
-  (* Irmin Git is using too much memory for some repos.
-     https://github.com/mirage/irmin/issues/263  Use Git to do the
-     initial cloning. *)
-  (if Sys.file_exists root then
-     catch (fun () -> Irmin.pull_exn (t "Updating") upstream `Update)
-           (fun e -> Lwt_io.printlf "Fail pull %s: %s"
-                                  remote_uri (Printexc.to_string e))
-   else (
-     (* Initial cloning, use git. *)
-     let cmd = Printf.sprintf "git clone %s %s" remote_uri root in
-     let cmd = "", [| "sh"; "-c"; cmd |] in
+  (if not(Sys.file_exists root) then (
+     (* Irmin Git is using too much memory for some repos.
+        https://github.com/mirage/irmin/issues/263  Use Git to do the
+        initial cloning. *)
+     let cmd = "", [| "git"; "clone"; "--no-checkout"; remote_uri; root |] in
      Lwt_process.exec cmd >>= fun st ->
      match st with
      | Unix.WEXITED 0 -> return_unit
      | Unix.WEXITED n -> Lwt_io.printlf "Git %s exit %d" remote_uri n
      | Unix.WSIGNALED n -> Lwt_io.printlf "Git killed by signal %d" n
      | Unix.WSTOPPED n -> Lwt_io.printlf "Git stopped by signal %d" n
-   ))
+   )
+   else
+     return_unit) >>= fun () ->
+  let store = Irmin.basic (module Irmin_unix.Irmin_git.FS)
+                          (module Irmin.Contents.String) in
+  let config = Irmin_unix.Irmin_git.config ~root ~bare:true () in
+  Irmin.create store config Irmin_unix.task >>= fun t ->
+  let upstream = Irmin.remote_uri remote_uri in
+  catch (fun () -> Irmin.pull_exn (t "Updating") upstream `Update)
+        (fun e -> Lwt_io.printlf "Fail pull %s: %s"
+                               remote_uri (Printexc.to_string e))
   >>= fun () ->
   Irmin.history (t "history") >>= fun h ->
   map_history t h
