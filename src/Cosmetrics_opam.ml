@@ -45,7 +45,7 @@ let guess_git =
   else if Str.string_match github_io url 0 then
     let user = Str.matched_group 1 url
     and repo = Str.matched_group 2 url in
-    Some ("https://github.com/" ^ user ^ "/" ^ repo)
+    Some ("https://github.com/" ^ user ^ "/" ^ repo ^ ".git")
   else if Str.string_match bitbucket url 0 then
     let user = Str.matched_group 1 url
     and repo = Str.matched_group 2 url in
@@ -67,6 +67,37 @@ let write_opam ~name ~version ~git opam =
   let opam = OpamFile.OPAM.with_opam_version opam opam_version in
   let opam = OpamFile.OPAM.with_dev_repo opam (Some(Git(git, None))) in
   OpamFile.OPAM.write opam_file opam
+
+let read_whole_file fname =
+  let fh = open_in fname in
+  let n = in_channel_length fh in
+  let b = Bytes.create n in
+  if input fh b 0 n <> n then failwith "read_whole_file";
+  close_in fh;
+  Bytes.unsafe_to_string b
+
+let version_re = Str.regexp "^opam-version *: * \"[^\"]+\""
+let build_re = Str.regexp "^build:"
+
+(* OpamFile.OPAM.write rewrites too much of the file making the actual
+   changes in the commit difficult to appreciate.  Use regexpes
+   instead. *)
+let write_opam ~name ~version ~git opam =
+  let version = OpamPackage.Version.to_string version in
+  try
+    let opam_file =
+      let dir = Filename.concat my_repo name in
+      let dir = Filename.concat dir (name ^ "." ^ version) in
+      Filename.concat dir "opam" in
+    let s = read_whole_file opam_file in
+    let s = Str.global_replace version_re "opam-version: \"1.2\"" s in
+    let dev_repo = sprintf "dev-repo: \"%s\"\nbuild:" git in
+    let s = Str.global_replace build_re dev_repo s in
+    let fh = open_out opam_file in
+    output fh s 0 (String.length s);
+    close_out fh
+  with e ->
+    eprintf "E: %s %s: %s\n" name version (Printexc.to_string e)
 
 let write_opam ~name ~version ~git opam = ()
 

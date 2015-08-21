@@ -15,7 +15,7 @@ Library "cosmetrics"
   InternalModules: Cosmetrics_html, Cosmetrics_opam
   BuildDepends: irmin.unix (>= 0.9.9), git, zip, nocrypto, cohttp,
                 ocamlgraph, calendar,
-                opam-lib.client (>= 1.2 && < 1.3), str
+                opam-lib.client (>= 1.2 && < 1.3), str, bytes
   BuildTools:   ocamlbuild
 
 Executable cosmetrics
