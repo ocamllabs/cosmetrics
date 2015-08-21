@@ -94,7 +94,7 @@ let write_opam ~name ~version ~git opam =
     let dev_repo = sprintf "dev-repo: \"%s\"\nbuild:" git in
     let s = Str.global_replace build_re dev_repo s in
     let fh = open_out opam_file in
-    output fh s 0 (String.length s);
+    output fh (Bytes.unsafe_of_string s) 0 (String.length s);
     close_out fh
   with e ->
     eprintf "E: %s %s: %s\n" name version (Printexc.to_string e)
