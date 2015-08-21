@@ -306,7 +306,19 @@ let rec take n = function
 let () =
   let select pkg opam =
     List.mem "org:mirage" (OpamFile.OPAM.tags opam) in
-  let repos = Cosmetrics_opam.git ~select () in
+  let repos = Cosmetrics_opam.git () in
   Printf.printf "# repos: %d\n" (List.length repos);
+  (* Write a file for the initial cloning using Git. *)
+  let fh = open_out "clone_repos.sh" in
+  Printf.fprintf fh "#!/bin/sh\n\n";
+  Printf.fprintf fh "REPO_DIR=../opam/\n";
+  let get_repo (pkg, remote_uri) =
+    let dir = Filename.basename remote_uri in
+    let dir = try Filename.chop_extension dir with _ -> dir in
+    Printf.fprintf fh "git clone --no-checkout %s ${REPO_DIR}%s\n"
+                   remote_uri dir in
+  List.iter get_repo repos;
+  close_out fh;
+
   (* let repos = take 10 repos in *)
-  Lwt_main.run (main "mirage" repos)
+  (* Lwt_main.run (main "mirage" repos) *)
