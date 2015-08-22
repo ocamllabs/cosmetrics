@@ -12,14 +12,14 @@ let add_stats html repo commits =
   let open Cosmetrics in
   let total = List.fold_left (fun s (_, n) -> s + n.Summary.n) 0 summary in
   H.printf html "<p>Total number of commits (excl. merge): %d</p>\n\
-                 <ul>" total;
+                 <ol>" total;
   List.iter (fun (a,s) ->
              let main = if is_main_author s then "main"
                         else "occasional" in
              H.printf html "<li class='%s'>%s: %d (%.1f%%)</li>"
                        main a s.Summary.n s.Summary.pct
             ) summary;
-  H.printf html "</ul>"
+  H.printf html "</ol>"
 
 let rec cummulative_loop prev = function
   | [] -> []
@@ -218,6 +218,7 @@ let main project remotes =
                  ) remotes
   >>= fun repo_commits ->
   let repo_commits = List.filter (fun (_, c) -> c <> []) repo_commits in
+  Printf.printf "# repositories used: %d\n" (List.length repo_commits);
 
   let start, stop =
     match repo_commits with
