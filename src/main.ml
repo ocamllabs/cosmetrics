@@ -199,19 +199,19 @@ let create_number_projects starts =
   else if Calendar.compare d starts.(n - 1) >= 0 then n
   else index Calendar.compare starts d 0 (n - 1) + 1
 
+let commits_of_file fname =
+  Lwt_io.open_file ~flags:[Unix.O_RDONLY]
+                   ~mode:Lwt_io.Input fname >>= fun ch ->
+  Lwt_io.read_value ch >>= fun v ->
+  Lwt_io.close ch >>= fun () ->
+  return(v: C.Commit.t list)
 
 let main project remotes =
-  catch (fun () -> Lwt_unix.mkdir project 0o775)
-        (fun _ -> return_unit) >>= fun () ->
-  Lwt_unix.chdir project >>= fun () ->
-  Lwt_io.printf "Updating repositories... " >>= fun () ->
-  Lwt_list.map_p (fun (pkg, repo) ->
-                  Cosmetrics.history repo >>= fun commits ->
-                  return (OpamPackage.to_string pkg,
-                          Cosmetrics.commits commits)
+  Lwt_list.map_p (fun (pkg, commits_fname) ->
+                  commits_of_file commits_fname >>= fun commits ->
+                  return (OpamPackage.to_string pkg, commits)
                  ) remotes
   >>= fun repo_commits ->
-  Lwt_io.printlf "done.%!" >>= fun () ->
 
   let start, stop =
     match repo_commits with
@@ -303,22 +303,59 @@ let rec take n = function
   | [] -> []
   | x :: tl -> if n <= 0 then [] else x :: take (n - 1) tl
 
+
 let () =
+  let clone_script = ref false in
+  let compact_repos = ref false in
+  let specs = [
+      "--clone-script", Arg.Set clone_script,
+      " Output a script to clone all repositories";
+      "--compact-repos", Arg.Set compact_repos,
+      " Extract the history from each repository and save a compact form";
+    ] in
+  let specs = Arg.align specs in
+  let usage_msg = "" in
+  Arg.parse specs (fun _ -> raise(Arg.Bad "No anomynous arg")) usage_msg;
+
   let select pkg opam =
     List.mem "org:mirage" (OpamFile.OPAM.tags opam) in
-  let repos = Cosmetrics_opam.git () in
-  Printf.printf "# repos: %d\n" (List.length repos);
-  (* Write a file for the initial cloning using Git. *)
-  let fh = open_out "clone_repos.sh" in
-  Printf.fprintf fh "#!/bin/sh\n\n";
-  Printf.fprintf fh "REPO_DIR=../opam/\n";
-  let get_repo (pkg, remote_uri) =
-    let dir = Filename.basename remote_uri in
-    let dir = try Filename.chop_extension dir with _ -> dir in
-    Printf.fprintf fh "git clone --no-checkout %s ${REPO_DIR}%s\n"
-                   remote_uri dir in
-  List.iter get_repo repos;
-  close_out fh;
-
+  let repos = Cosmetrics_opam.git ~select () in
+  Printf.printf "# repos: %d\n%!" (List.length repos);
   (* let repos = take 10 repos in *)
-  (* Lwt_main.run (main "mirage" repos) *)
+  let project = "mirage" in
+
+  let dir_of_uri remote_uri =
+    let dir = Filename.basename remote_uri in
+    try Filename.chop_extension dir with _ -> dir in
+  let commits_fname remote_uri =
+    Filename.concat "repo" (dir_of_uri remote_uri ^ ".commits") in
+
+  (try Unix.mkdir project 0o775 with _ -> ());
+  Unix.chdir project;
+  if !clone_script then (
+    (* Write a file for the initial cloning using Git. *)
+    let fh = open_out "clone_repos.sh" in
+    Printf.fprintf fh "#!/bin/sh\n\n";
+    Printf.fprintf fh "REPO_DIR=repo\n";
+    let get_repo (pkg, remote_uri) =
+      Printf.fprintf fh "git clone --no-checkout %s ${REPO_DIR}%s\n"
+                     remote_uri (dir_of_uri remote_uri) in
+    List.iter get_repo repos;
+    close_out fh;
+  );
+  if !compact_repos then (
+    let compact_repo (pkg, remote_uri) =
+      Cosmetrics.history remote_uri >>= fun commits ->
+      let c = Cosmetrics.commits commits in
+
+      Lwt_io.open_file ~flags:[Unix.O_WRONLY; Unix.O_CREAT; Unix.O_TRUNC]
+                       ~mode:Lwt_io.Output
+                       (commits_fname remote_uri) >>= fun ch ->
+      Lwt_io.write_value ch c >>= fun () ->
+      Lwt_io.close ch in
+    Lwt_main.run(Lwt_list.iter_s compact_repo repos);
+  )
+  else (
+    let repos = List.map (fun (p, r) -> (p, commits_fname r)) repos in
+    Lwt_main.run (main project repos)
+  )
