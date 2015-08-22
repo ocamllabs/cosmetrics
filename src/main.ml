@@ -318,11 +318,12 @@ let () =
   Arg.parse specs (fun _ -> raise(Arg.Bad "No anomynous arg")) usage_msg;
 
   let select pkg opam =
-    List.mem "org:mirage" (OpamFile.OPAM.tags opam) in
+    (* Irmin uses > 8.5Gb to process llvm! *)
+    OpamPackage.(Name.to_string (name pkg)) <> "llvm" in
   let repos = Cosmetrics_opam.git ~select () in
   Printf.printf "# repos: %d\n%!" (List.length repos);
   (* let repos = take 10 repos in *)
-  let project = "mirage" in
+  let project = "opam-repo" in
 
   let dir_of_uri remote_uri =
     let dir = Filename.basename remote_uri in
@@ -334,17 +335,20 @@ let () =
   Unix.chdir project;
   if !clone_script then (
     (* Write a file for the initial cloning using Git. *)
-    let fh = open_out "clone_repos.sh" in
+    let fh = open_out_gen [Open_creat; Open_wronly; Open_trunc]
+                          0o755 "clone_repos.sh" in
     Printf.fprintf fh "#!/bin/sh\n\n";
-    Printf.fprintf fh "REPO_DIR=repo\n";
+    Printf.fprintf fh "REPO_DIR=repo/\n";
     let get_repo (pkg, remote_uri) =
       Printf.fprintf fh "git clone --no-checkout %s ${REPO_DIR}%s\n"
                      remote_uri (dir_of_uri remote_uri) in
     List.iter get_repo repos;
     close_out fh;
+    exit 0;
   );
   if !compact_repos then (
     let compact_repo (pkg, remote_uri) =
+      Printf.printf "→ %s\n%!" (OpamPackage.(Name.to_string (name pkg)));
       Cosmetrics.history remote_uri >>= fun commits ->
       let c = Cosmetrics.commits commits in
 
@@ -353,6 +357,10 @@ let () =
                        (commits_fname remote_uri) >>= fun ch ->
       Lwt_io.write_value ch c >>= fun () ->
       Lwt_io.close ch in
+    let compact_repo r =
+      catch (fun () -> compact_repo r)
+            (fun e -> Printf.printf "  *** %s\n%!" (Printexc.to_string e);
+                    return_unit) in
     Lwt_main.run(Lwt_list.iter_s compact_repo repos);
   )
   else (

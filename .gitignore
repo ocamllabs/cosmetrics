@@ -6,5 +6,5 @@
 /setup.log
 /setup.ml
 /*.html
-/clone_repos.sh
 /mirage/
+/opam-repo/

@@ -2,3 +2,4 @@
 # OASIS_STOP
 
 true: annot, safe_string
+true: debug
