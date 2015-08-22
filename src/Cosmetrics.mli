@@ -101,7 +101,7 @@ val commits : ?merge_commits: bool -> History.t -> Commit.t list
 (** Return the commits in the history.  Unless [merge_commits] is
     [true], the merge commits are not returned (this is the default). *)
 
-val history : ?repo_dir: string -> string -> History.t Lwt.t
+val history : ?repo_dir: string -> ?update: bool -> string -> History.t Lwt.t
 (** [history remote_uri] returns the DAG representing the history of
     the Git repository at [remote_uri].
 

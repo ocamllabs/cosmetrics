@@ -251,7 +251,7 @@ let map_history t h0 =
 
 let from_github = Str.regexp "https?://github.com/"
 
-let history ?(repo_dir="repo") remote_uri =
+let history ?(repo_dir="repo") ?(update=false) remote_uri =
   (* Work around HTTPS irmin bug: https://github.com/mirage/irmin/issues/259 *)
   let remote_uri =
     Str.replace_first from_github "git://github.com/" remote_uri in
@@ -276,10 +276,13 @@ let history ?(repo_dir="repo") remote_uri =
                           (module Irmin.Contents.String) in
   let config = Irmin_unix.Irmin_git.config ~root ~bare:true () in
   Irmin.create store config Irmin_unix.task >>= fun t ->
-  let upstream = Irmin.remote_uri remote_uri in
-  catch (fun () -> Irmin.pull_exn (t "Updating") upstream `Update)
-        (fun e -> Lwt_io.printlf "Fail pull %s: %s"
-                               remote_uri (Printexc.to_string e))
+  (if update then
+     let upstream = Irmin.remote_uri remote_uri in
+     catch (fun () -> Irmin.pull_exn (t "Updating") upstream `Update)
+           (fun e -> Lwt_io.printlf "Fail pull %s: %s"
+                                  remote_uri (Printexc.to_string e))
+   else
+     return_unit)
   >>= fun () ->
   Irmin.history (t "history") >>= fun h ->
   map_history t h
