@@ -200,11 +200,16 @@ let create_number_projects starts =
   else index Calendar.compare starts d 0 (n - 1) + 1
 
 let commits_of_file fname =
-  Lwt_io.open_file ~flags:[Unix.O_RDONLY]
-                   ~mode:Lwt_io.Input fname >>= fun ch ->
-  Lwt_io.read_value ch >>= fun v ->
-  Lwt_io.close ch >>= fun () ->
-  return(v: C.Commit.t list)
+  if Sys.file_exists fname then
+    Lwt_io.open_file ~flags:[Unix.O_RDONLY]
+                     ~mode:Lwt_io.Input fname >>= fun ch ->
+    Lwt_io.read_value ch >>= fun v ->
+    Lwt_io.close ch >>= fun () ->
+    return(v: C.Commit.t list)
+  else (
+    Lwt_io.printlf "¬∃ %s" fname >>= fun () ->
+    return []
+  )
 
 let main project remotes =
   Lwt_list.map_p (fun (pkg, commits_fname) ->
