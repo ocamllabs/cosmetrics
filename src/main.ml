@@ -217,6 +217,7 @@ let main project remotes =
                   return (OpamPackage.to_string pkg, commits)
                  ) remotes
   >>= fun repo_commits ->
+  let repo_commits = List.filter (fun (_, c) -> c <> []) repo_commits in
 
   let start, stop =
     match repo_commits with
