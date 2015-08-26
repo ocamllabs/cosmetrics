@@ -314,11 +314,14 @@ let rec take n = function
 let () =
   let clone_script = ref false in
   let compact_repos = ref false in
+  let compact_repo = ref "" in
   let specs = [
       "--clone-script", Arg.Set clone_script,
       " Output a script to clone all repositories";
       "--compact-repos", Arg.Set compact_repos,
       " Extract the history from each repository and save a compact form";
+      "--compact-repo", Arg.Set_string compact_repo,
+      "repo Extract the history from the repo and save a compact form";
     ] in
   let specs = Arg.align specs in
   let usage_msg = "" in
@@ -347,28 +350,39 @@ let () =
     Printf.fprintf fh "#!/bin/sh\n\n";
     Printf.fprintf fh "REPO_DIR=repo/\n";
     let get_repo (pkg, remote_uri) =
+      Printf.fprintf fh "# %s =>\n" (OpamPackage.to_string pkg);
       Printf.fprintf fh "git clone --no-checkout %s ${REPO_DIR}%s\n"
                      remote_uri (dir_of_uri remote_uri) in
     List.iter get_repo repos;
     close_out fh;
     exit 0;
   );
-  if !compact_repos then (
-    let compact_repo (pkg, remote_uri) =
-      Printf.printf "→ %s\n%!" (OpamPackage.(Name.to_string (name pkg)));
+  if !compact_repos || !compact_repo <> "" then (
+    let compact_1repo (pkg, remote_uri) =
+      Printf.printf "→ %s %!" (OpamPackage.(Name.to_string (name pkg)));
       Cosmetrics.history remote_uri >>= fun commits ->
       let c = Cosmetrics.commits commits in
+      Printf.printf "(%d commits)\n%!" (List.length c);
 
       Lwt_io.open_file ~flags:[Unix.O_WRONLY; Unix.O_CREAT; Unix.O_TRUNC]
                        ~mode:Lwt_io.Output
                        (commits_fname remote_uri) >>= fun ch ->
       Lwt_io.write_value ch c >>= fun () ->
       Lwt_io.close ch in
-    let compact_repo r =
-      catch (fun () -> compact_repo r)
+    let compact_1repo r =
+      catch (fun () -> compact_1repo r)
             (fun e -> Printf.printf "  *** %s\n%!" (Printexc.to_string e);
                     return_unit) in
-    Lwt_main.run(Lwt_list.iter_s compact_repo repos);
+    if !compact_repo <> "" then
+      let is_pkg (pkg, _) =
+        OpamPackage.(Name.to_string (name pkg)) = !compact_repo in
+      (try
+          let r = List.find is_pkg repos in
+          Lwt_main.run(compact_1repo r)
+        with Not_found ->
+          Printf.eprintf "E: Package %S not found.\n" !compact_repo)
+    else
+      Lwt_main.run(Lwt_list.iter_s compact_1repo repos);
   )
   else (
     let repos = List.map (fun (p, r) -> (p, commits_fname r)) repos in
