@@ -4,6 +4,8 @@ module C = Cosmetrics
 module T = C.Timeseries
 module H = Cosmetrics_html
 
+let is_finite x = neg_infinity < x && x < infinity
+
 let is_main_author s =
   Cosmetrics.Summary.(s.n > 5 && s.pct > 1.)
 
@@ -168,6 +170,39 @@ let contribution_order html repo_commits =
   display_table ~nth:2;
   H.print html "</td></tr></table>\n"
 
+(* The tag list is supposed to be sorted by increasing dates. *)
+let rec average_periods (sum, n) = function
+  | [] | [_] -> sum /. float n
+  | d0 :: ((d1 :: _) as tl) ->
+     let d0 = Calendar.to_unixfloat(Cosmetrics.Tag.date d0) in
+     let d1 = Calendar.to_unixfloat(Cosmetrics.Tag.date d1) in
+     average_periods (sum +. (d1 -. d0), n + 1) tl
+
+let average_releases html remotes =
+  let process_repo (pkg, remote_uri, _) =
+    Cosmetrics.get_store remote_uri >>= fun store ->
+    Cosmetrics.Tag.get store >|= fun tags ->
+    let tags = List.sort Cosmetrics.Tag.cmp_date tags in
+    let avg = average_periods (0., 0) tags in
+    (pkg, avg)
+  in
+  Lwt_list.map_p process_repo remotes >|= fun repo_average ->
+  let repo_average =
+    List.sort (fun (_,a1) (_,a2) -> compare a1 a2) repo_average in
+  H.print html "<h2>Average time between releases</h2>\n";
+  H.print html "<table class='average-releases'>\n  \
+                <tr><td>Repo</td><td>Average</td></tr>\n";
+  let print (pkg, avg) =
+    let name = OpamPackage.(Name.to_string (name pkg)) in
+    let days = avg /. 86400. in
+    let months = days /. 30. in
+    let a = if is_finite months then
+              if months < 1. then "/" (* not serious *)
+              else Printf.sprintf "≈ %.0f months" months
+            else "/" in
+    H.printf html "<tr><td>%s</td><td>%s</td></tr>\n" name a in
+  List.iter print repo_average;
+  H.print html "</table>\n"
 
 let date_min d1 d2 =
   if Calendar.compare d1 d2 <= 0 then d1 else d2
@@ -212,7 +247,7 @@ let commits_of_file fname =
   )
 
 let main project remotes =
-  Lwt_list.map_p (fun (pkg, commits_fname) ->
+  Lwt_list.map_p (fun (pkg, _, commits_fname) ->
                   commits_of_file commits_fname >>= fun commits ->
                   return (OpamPackage.to_string pkg, commits)
                  ) remotes
@@ -240,7 +275,8 @@ let main project remotes =
     let link (repo, fname, _) =
       H.printf html "<a href=\"%s\">%s</a>\n" fname repo in
     List.iter link repo_commits in
-  let process ?(busyness=true) ?(more_graphs=fun _ -> ()) ?(more=fun _ -> ())
+  let process ?(busyness=true) ?(more_graphs=fun _ -> ())
+              ?(more=fun _ -> return_unit)
               (repo, fname, commits) =
     let html = H.make () in
     H.style html "div.graph {
@@ -267,7 +303,7 @@ let main project remotes =
     let alv = graph html ~start ~stop repo commits ~busyness in
     more_graphs html;
     add_stats html repo commits;
-    more html;
+    more html >>= fun () ->
     H.write html fname >>= fun () ->
     return alv
   in
@@ -301,6 +337,7 @@ let main project remotes =
   in
   let global_tables html =
     contribution_order html repo_commits;
+    average_releases html remotes;
   in
   process ("all repositories", "index.html", all_commits)
           ~busyness:false
@@ -362,7 +399,7 @@ let () =
   if !compact_repos || !compact_repo <> "" then (
     let compact_1repo (pkg, remote_uri) =
       Printf.printf "→ %s %!" (OpamPackage.(Name.to_string (name pkg)));
-      Cosmetrics.get_store remote_uri >>= fun store ->
+      Cosmetrics.get_store remote_uri ~update:true >>= fun store ->
       Cosmetrics.commits store >>= fun c ->
       Printf.printf "(%d commits)\n%!" (C.Commit.Set.cardinal c);
 
@@ -387,6 +424,6 @@ let () =
       Lwt_main.run(Lwt_list.iter_s compact_1repo repos);
   )
   else (
-    let repos = List.map (fun (p, r) -> (p, commits_fname r)) repos in
+    let repos = List.map (fun (p, r) -> (p, r, commits_fname r)) repos in
     Lwt_main.run (main project repos)
   )

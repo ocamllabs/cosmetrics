@@ -102,6 +102,9 @@ module Tag : sig
 
   val date : t -> Calendar.t
 
+  val cmp_date : t -> t -> int
+  (** Compare two tags by increasing date. *)
+
   val get : Git_unix.FS.t -> t list Lwt.t
   ;;
 end

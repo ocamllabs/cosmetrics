@@ -265,15 +265,27 @@ module Tag = struct
   let name t = t.name
   let date t = t.date
 
-  let get_ref t r =
+  let cmp_date t1 t2 =
+    Calendar.compare (date t1) (date t2)
+
+  let make r t =
     let s = Git.Reference.to_raw r in
-    if String.start_with "refs/tags/" s then
+    { r;
+      name = String.sub s 10 (String.length s - 10);
+      date = Calendar.from_unixfloat (Int64.to_float t) }
+
+  let get_ref t r =
+    if String.start_with "refs/tags/" (Git.Reference.to_raw r) then
       Store.read_reference_exn t r >>= fun sha ->
-      read_commit_exn t sha >|= fun commit ->
-      let t, _ = Git.(commit.Commit.author.User.date) in (* FIXME: Use TZ *)
-      Some({ r;
-             name = String.sub s 10 (String.length s - 10);
-             date = Calendar.from_unixfloat (Int64.to_float t) })
+      Store.read_exn t (Git.SHA.of_commit sha) >|= fun v ->
+      match v with
+      | Git.Value.Commit c ->
+         let t, _ (* FIXME: Use TZ *) = Git.(c.Commit.author.User.date) in
+         Some(make r t)
+      | Git.Value.Tag t ->
+         let t, _ = Git.(t.Tag.tagger.User.date) in
+         Some(make r t)
+      | Git.Value.Blob _ | Git.Value.Tree _ -> None
     else return_none
 
   let get t =
@@ -317,6 +329,7 @@ let commits ?(merge_commits=false) t =
 (* Add to the graph [h] all the history leading to [sha] (whose commit
    representation for this library [c] is suppose to be in [h]). *)
 let rec add_history_to t h commit c =
+  (* FIXME: check *)
   let add_parent h p_sha =
     read_commit_exn t p_sha >>= fun parent ->
     let c_parent = Commit.of_git p_sha parent in
@@ -363,7 +376,7 @@ let get_store ?(repo_dir="repo") ?(update=false) remote_uri =
   Store.create ~root () >>= fun t ->
   (if update then
      let upstream = Git.Gri.of_string remote_uri in
-     catch (fun () -> G.fetch t upstream >>= fun r ->
+     catch (fun () -> G.fetch t upstream ~update:true >>= fun r ->
                     match Git_unix.Sync.Result.head_contents r with
                     | Some h -> Store.write_head t h
                     | None -> return_unit)
