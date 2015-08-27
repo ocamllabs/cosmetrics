@@ -3,3 +3,6 @@
 
 true: annot, safe_string
 true: debug
+
+"mirage": -traverse, not_hygienic
+"opam-repo": -traverse, not_hygienic
