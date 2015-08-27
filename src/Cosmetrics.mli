@@ -57,36 +57,38 @@ end
 module Commit : sig
   type t
 
+  module Set : Set.S with type elt = t
+
   val date : t -> Calendar.t
   val author : t -> string
-  val sha1 : t -> Irmin.Hash.SHA1.t
+  val sha1 : t -> Git.SHA.Commit.t
 
   val compare : t -> t -> int
   val hash : t -> int
   val equal : t -> t -> bool
 
-  val date_range_exn : t list -> Calendar.t * Calendar.t
+  val date_range_exn : Set.t -> Calendar.t * Calendar.t
   (** Return the first and last dates (times are erased) of a list of
       commits.
       @raise Invalid_argument if the list is empty. *)
 
   val timeseries :
     [`Week | `Month] -> ?start: Calendar.t -> ?stop: Calendar.t ->
-    t list -> int Timeseries.t
+    Set.t -> int Timeseries.t
   (** [timeseries period commits] returns a list in time-increasing
       order of the number of commits per week (starting on Sunday) or
       per month depending on [period]. *)
 
   val timeseries_author :
     [`Week | `Month] -> ?start: Calendar.t -> ?stop: Calendar.t ->
-    t list -> int Timeseries.t
+    Set.t -> int Timeseries.t
   (** Return a time series of the number of authors contrinuting per
       period of time, regardless of how many commits they made. *)
 
   val busyness :
     [`Week | `Month] -> ?start: Calendar.t -> ?stop: Calendar.t ->
     ?pencil: float array -> ?offset: int ->
-    t list -> float Timeseries.t
+    Set.t -> float Timeseries.t
   (** Return an "busyness" measure (in the interval [0.] … [1.]) of
       the project along time. *)
   ;;
@@ -97,11 +99,14 @@ module History : Graph.Sig.P  with type V.t = Commit.t
 
 module StringMap : Map.S  with type key = string
 
-val commits : ?merge_commits: bool -> History.t -> Commit.t list
+val get_store : ?repo_dir: string -> ?update: bool -> string
+                -> Git_unix.FS.t Lwt.t
+
+val commits : ?merge_commits: bool -> Git_unix.FS.t -> Commit.Set.t Lwt.t
 (** Return the commits in the history.  Unless [merge_commits] is
     [true], the merge commits are not returned (this is the default). *)
 
-val history : ?repo_dir: string -> ?update: bool -> string -> History.t Lwt.t
+val history : Git_unix.FS.t -> History.t Lwt.t
 (** [history remote_uri] returns the DAG representing the history of
     the Git repository at [remote_uri].
 
@@ -111,7 +116,7 @@ val history : ?repo_dir: string -> ?update: bool -> string -> History.t Lwt.t
     on the basename of [remote_uri]. *)
 
 val authors_timeseries :
-  ('r * Commit.t list) list -> ('r * Commit.t) Timeseries.t StringMap.t
+  ('r * Commit.Set.t) list -> ('r * Commit.t) Timeseries.t StringMap.t
 (** [authors_timeseries repo_commits]: given a list of repositories
     names (represented as type ['r]) and commits, return a map that
     gives, for each author, the time-series of its commits with the
@@ -123,7 +128,7 @@ module Summary : sig
       pct: float; (** percentage of commits (in [0.] .. [100.]. *)
     }
 
-  val make : Commit.t list -> (string * t) list
+  val make : Commit.Set.t -> (string * t) list
 
-  val make_map : Commit.t list -> t StringMap.t
+  val make_map : Commit.Set.t -> t StringMap.t
 end

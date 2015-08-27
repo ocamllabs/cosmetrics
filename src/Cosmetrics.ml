@@ -2,6 +2,24 @@
 open Lwt
 open CalendarLib
 
+module Store = Git_unix.FS
+module G = Git_unix.Sync.Make(Store)
+
+let read_commit_exn t sha =
+  Store.read_exn t (Git.SHA.of_commit sha) >>= fun v ->
+  match v with
+  | Git.Value.Commit c -> return c
+  | Git.Value.Blob _ | Git.Value.Tag _
+  | Git.Value.Tree _ ->
+     fail(Failure "Cosmetrics.read_commit_exn: not a commit value")
+
+let rec filter_map l f =
+  match l with
+  | [] -> []
+  | x :: tl -> match f x with
+               | Some y -> y :: filter_map tl f
+               | None -> filter_map tl f
+
 module Timeseries = struct
   module MW = Map.Make(Calendar)
 
@@ -85,7 +103,7 @@ let sub_one_month d =
 
 let timeseries_gen offset ~date_of_value
                    ~empty_bucket ~update_with_value
-                   ?start ?stop values =
+                   ?start ?stop (iter_values: (_ -> unit) -> unit) =
   let date_for_period, next, prev = match offset with
     | `Week -> sunday_of_week, add_one_week, sub_one_week
     | `Month -> first_day_of_month, add_one_month, sub_one_month in
@@ -116,7 +134,7 @@ let timeseries_gen offset ~date_of_value
     let d = date_for_period(date_of_value v) in
     update_with_value v d ~next ~prev ~get_bucket
   in
-  List.iter add_value values;
+  iter_values add_value;
   let m = Timeseries.map !m (fun cnt -> !cnt) in
   (* Make sure all weeks in the range are present, if needed with a
      count of 0 *)
@@ -133,33 +151,42 @@ module Commit = struct
   type t = {
       date: Calendar.t;
       author: string;
-      sha1: Irmin.Hash.SHA1.t;
+      sha1: Git.SHA.Commit.t;
     }
 
   let date t = t.date
   let author t = t.author
   let sha1 t = t.sha1
 
-  let compare c1 c2 = Irmin.Hash.SHA1.compare c1.sha1 c2.sha1
-  let hash c = Irmin.Hash.SHA1.hash c.sha1
-  let equal c1 c2 = Irmin.Hash.SHA1.equal c1.sha1 c2.sha1
+  let compare c1 c2 = Git.SHA.Commit.compare c1.sha1 c2.sha1
+  let hash c = Git.SHA.Commit.hash c.sha1
+  let equal c1 c2 = Git.SHA.Commit.equal c1.sha1 c2.sha1
 
-  let of_head t head =
-    Irmin.task_of_head (t "task of head") head >>= fun task ->
-    let t = Int64.to_float(Irmin.Task.date task) in
-    let date = Calendar.from_unixfloat t in
-    let author = Irmin.Task.owner task in
-    return { date; author; sha1 = head }
+  module StringSet = Set.Make(String)
 
-  let rec date_range_loop d_min d_max = function
-    | [] -> d_min, d_max
-    | c :: tl -> let d = date c in
-                 date_range_loop (date_min d_min d) (date_max d_max d) tl
+  module Set = Set.Make(struct type commit = t
+                               type t = commit
+                               let compare = compare
+                        end)
 
-  let date_range_exn = function
-    | [] -> invalid_arg "Cosmetrics.Commit.date_range_exn: empty list"
-    | c :: tl -> let d = date c in
-                 date_range_loop d d tl
+  let of_git sha1 c =
+    let a = Git.Commit.(c.author) in
+    let t, _ = Git.User.(a.date) in (* FIXME: Use TZ *)
+    let date = Calendar.from_unixfloat (Int64.to_float t) in
+    let author = Git.User.(a.name) in
+    { date; author; sha1 }
+
+
+  let date_range_exn s =
+    if Set.is_empty s then
+      invalid_arg "Cosmetrics.Commit.date_range_exn: empty set"
+    else
+      let c = Set.choose s in (* will be reevaluated in the loop but easier *)
+      let d = date c in
+      Set.fold (fun c (d_min, d_max) ->
+                let d = date c in
+                (date_min d_min d, date_max d_max d)
+               ) s (d,d)
 
   let update_count _ date ~next ~prev ~get_bucket =
     incr (get_bucket date)
@@ -167,9 +194,7 @@ module Commit = struct
   let timeseries offset ?start ?stop commits =
     timeseries_gen offset ~date_of_value:date
                    ~empty_bucket:0  ~update_with_value:update_count
-                   ?start ?stop commits
-
-  module StringSet = Set.Make(String)
+                   ?start ?stop (fun f -> Set.iter f commits)
 
   let update_authors commit date ~next ~prev ~get_bucket =
     let a = get_bucket date in
@@ -179,7 +204,7 @@ module Commit = struct
     let l = timeseries_gen offset ~date_of_value:date
                            ~empty_bucket:StringSet.empty
                            ~update_with_value:update_authors
-                           ?start ?stop commits in
+                           ?start ?stop (fun f -> Set.iter f commits) in
     Timeseries.map l (fun a -> StringSet.cardinal a)
 
 
@@ -219,39 +244,68 @@ module Commit = struct
     let l = timeseries_gen period ~date_of_value:date
                            ~empty_bucket:0.
                            ~update_with_value:(update_busyness pencil offset)
-                           ?start ?stop commits in
+                           ?start ?stop (fun f -> Set.iter f commits) in
     Timeseries.map l squash_into_01
 end
 
 module History = Graph.Persistent.Digraph.ConcreteBidirectional(Commit)
 
-let is_not_merge h c = History.out_degree h c <= 1
+let is_not_merge c =
+  match Git.Commit.(c.parents) with
+  | [] | [_] -> true
+  | _ -> false
 
-let commits ?(merge_commits=false) h =
-  let add_commit c l =
-    if merge_commits || is_not_merge h c then c :: l
-    else l in
-  History.fold_vertex add_commit h []
+let rec get_parent_commits ~merge_commits t commit sd =
+  let add_parent ((s, dealt) as sd) p_sha =
+    if Git.SHA.Commit.Set.mem p_sha dealt then return sd
+    else
+      let dealt = Git.SHA.Commit.Set.add p_sha dealt in
+      read_commit_exn t p_sha >>= fun parent ->
+      let s = if merge_commits || is_not_merge parent then
+                Commit.Set.add (Commit.of_git p_sha parent) s
+              else s in
+      get_parent_commits ~merge_commits t parent (s, dealt)
+  in
+  Lwt_list.fold_left_s add_parent sd Git.Commit.(commit.parents)
 
-module M = Map.Make(Irmin.Hash.SHA1)
+let commits ?(merge_commits=false) t =
+  Store.read_head t >>= fun head ->
+  (match head with
+   | Some (Git.Reference.SHA sha) -> return sha
+   | Some (Git.Reference.Ref r) -> Store.read_reference_exn t r
+   | None -> fail(Failure "Cosmetrics.commits: no head")) >>= fun head ->
+  read_commit_exn t head >>= fun commit ->
+  let s = Commit.Set.add (Commit.of_git head commit) Commit.Set.empty in
+  let dealt = Git.SHA.Commit.Set.(add head empty) in
+  get_parent_commits ~merge_commits t commit (s, dealt) >|= fun (s, _) ->
+  s
 
-(* Transform the history from Irmin representation to ours. *)
-let map_history t h0 =
-  (* Collect informations. *)
-  let vertices = Irmin.History.fold_vertex (fun n l -> n :: l) h0 [] in
-  Lwt_list.map_p (Commit.of_head t) vertices >>= fun vertices ->
-  (* Provide an fast access to the vertices. *)
-  let m = List.fold_left (fun m c -> M.add c.Commit.sha1 c m) M.empty vertices in
-  (* Add vertices & edges to the new graph. *)
-  let h = M.fold (fun _ c h -> History.add_vertex h c) m History.empty in
-  let add_edge c1 c2 h = History.add_edge h (M.find c1 m) (M.find c2 m) in
-  let h = Irmin.History.fold_edges add_edge h0 h in
-  return h
+(* Add to the graph [h] all the history leading to [sha] (whose commit
+   representation for this library [c] is suppose to be in [h]). *)
+let rec add_history_to t h commit c =
+  let add_parent h p_sha =
+    read_commit_exn t p_sha >>= fun parent ->
+    let c_parent = Commit.of_git p_sha parent in
+    let h = History.add_vertex h c_parent in
+    let h = History.add_edge h c_parent c in
+    add_history_to t h parent c_parent
+  in
+  Lwt_list.fold_left_s add_parent h Git.Commit.(commit.parents)
 
+let history t =
+  Store.read_head t >>= fun head ->
+  (match head with
+   | Some (Git.Reference.SHA sha) -> return sha
+   | Some (Git.Reference.Ref r) -> Store.read_reference_exn t r
+   | None -> fail(Failure "Cosmetrics.get_history: no head")) >>= fun head ->
+  read_commit_exn t head >>= fun commit ->
+  let c = Commit.of_git head commit in
+  let h = History.add_vertex History.empty c in
+  add_history_to t h commit c
 
 let from_github = Str.regexp "https?://github.com/"
 
-let history ?(repo_dir="repo") ?(update=false) remote_uri =
+let get_store ?(repo_dir="repo") ?(update=false) remote_uri =
   (* Work around HTTPS irmin bug: https://github.com/mirage/irmin/issues/259 *)
   let remote_uri =
     Str.replace_first from_github "git://github.com/" remote_uri in
@@ -272,26 +326,25 @@ let history ?(repo_dir="repo") ?(update=false) remote_uri =
    )
    else
      return_unit) >>= fun () ->
-  let store = Irmin.basic (module Irmin_unix.Irmin_git.FS)
-                          (module Irmin.Contents.String) in
-  let config = Irmin_unix.Irmin_git.config ~root ~bare:true () in
-  Irmin.create store config Irmin_unix.task >>= fun t ->
+  Store.create ~root () >>= fun t ->
   (if update then
-     let upstream = Irmin.remote_uri remote_uri in
-     catch (fun () -> Irmin.pull_exn (t "Updating") upstream `Update)
+     let upstream = Git.Gri.of_string remote_uri in
+     catch (fun () -> G.fetch t upstream >>= fun r ->
+                    match Git_unix.Sync.Result.head_contents r with
+                    | Some h -> Store.write_head t h
+                    | None -> return_unit)
            (fun e -> Lwt_io.printlf "Fail pull %s: %s"
                                   remote_uri (Printexc.to_string e))
    else
      return_unit)
   >>= fun () ->
-  Irmin.history (t "history") >>= fun h ->
-  map_history t h
+  return t
 
 module StringMap = Map.Make(String)
 
 let authors_timeseries repo_commits =
   (* Map [m]: author → repo time-series *)
-  let update_author repo m c =
+  let update_author repo c m =
     let t_author = try StringMap.find (Commit.author c) m
                    with Not_found -> Timeseries.empty in
     (* FIXME: although unlikely, one should handle better when 2
@@ -299,7 +352,7 @@ let authors_timeseries repo_commits =
     let t_author = Timeseries.add t_author (Commit.date c) (repo, c) in
     StringMap.add (Commit.author c) t_author m in
   let add_from_repo m (repo, commits) =
-    List.fold_left (update_author repo) m commits in
+    Commit.Set.fold (update_author repo) commits m in
   List.fold_left add_from_repo StringMap.empty repo_commits
 
 
@@ -314,12 +367,12 @@ module Summary = struct
      of commits. *)
   let make_map commits =
     let total = ref 0. in
-    let add_commit m c =
+    let add_commit c m =
       total := !total +. 1.;
       let a = Commit.author c in
       try StringMap.add a (StringMap.find a m + 1) m
       with Not_found -> StringMap.add a 1 m in
-    let m = List.fold_left add_commit StringMap.empty commits in
+    let m = Commit.Set.fold add_commit commits StringMap.empty in
     let pct = 100. /. !total in
     StringMap.map (fun n -> { n;  pct = float n *. pct }) m
 

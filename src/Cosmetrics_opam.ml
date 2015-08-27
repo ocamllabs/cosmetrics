@@ -56,7 +56,7 @@ let guess_git =
   else None
 
 
-let my_repo = "/tmp/opam/repository/packages"
+let my_repo = "/home/trch/software/OCaml/opam/repository/packages"
 
 let write_opam ~name ~version ~git opam =
   let opam_file =

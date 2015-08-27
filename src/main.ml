@@ -37,7 +37,7 @@ let graph html ?(per=`Month) ?(busyness=true) ~start ~stop repo commits =
   let m = Cosmetrics.Summary.make_map commits in
   let is_occasional c =
     not(is_main_author Cosmetrics.(StringMap.find (Commit.author c) m)) in
-  let occasionals = List.filter is_occasional commits in
+  let occasionals = C.Commit.Set.filter is_occasional commits in
   let l1 = Cosmetrics.Commit.timeseries per ~start ~stop commits in
   let l2 = Cosmetrics.Commit.timeseries per ~start ~stop occasionals in
   let l1 = T.map l1 float in
@@ -205,10 +205,10 @@ let commits_of_file fname =
                      ~mode:Lwt_io.Input fname >>= fun ch ->
     Lwt_io.read_value ch >>= fun v ->
     Lwt_io.close ch >>= fun () ->
-    return(v: C.Commit.t list)
+    return(v: C.Commit.Set.t)
   else (
     Lwt_io.printlf "¬∃ %s" fname >>= fun () ->
-    return []
+    return C.Commit.Set.empty
   )
 
 let main project remotes =
@@ -217,7 +217,8 @@ let main project remotes =
                   return (OpamPackage.to_string pkg, commits)
                  ) remotes
   >>= fun repo_commits ->
-  let repo_commits = List.filter (fun (_, c) -> c <> []) repo_commits in
+  let repo_commits =
+    List.filter (fun (_, c) -> not(C.Commit.Set.is_empty c)) repo_commits in
   Printf.printf "# repositories used: %d\n" (List.length repo_commits);
 
   let start, stop =
@@ -270,7 +271,8 @@ let main project remotes =
     H.write html fname >>= fun () ->
     return alv
   in
-  let all_commits = List.concat (List.map (fun (_,_,c) -> c) repo_commits) in
+  let all_commits = List.fold_left C.Commit.Set.union C.Commit.Set.empty
+                                   (List.map (fun (_,_,c) -> c) repo_commits) in
   Lwt_list.map_p process repo_commits >>= fun busys ->
   let global_graphs html =
     let busy = sum busys in
@@ -360,9 +362,9 @@ let () =
   if !compact_repos || !compact_repo <> "" then (
     let compact_1repo (pkg, remote_uri) =
       Printf.printf "→ %s %!" (OpamPackage.(Name.to_string (name pkg)));
-      Cosmetrics.history remote_uri >>= fun commits ->
-      let c = Cosmetrics.commits commits in
-      Printf.printf "(%d commits)\n%!" (List.length c);
+      Cosmetrics.get_store remote_uri >>= fun store ->
+      Cosmetrics.commits store >>= fun c ->
+      Printf.printf "(%d commits)\n%!" (C.Commit.Set.cardinal c);
 
       Lwt_io.open_file ~flags:[Unix.O_WRONLY; Unix.O_CREAT; Unix.O_TRUNC]
                        ~mode:Lwt_io.Output
