@@ -13,12 +13,20 @@ let read_commit_exn t sha =
   | Git.Value.Tree _ ->
      fail(Failure "Cosmetrics.read_commit_exn: not a commit value")
 
-let rec filter_map l f =
-  match l with
-  | [] -> []
-  | x :: tl -> match f x with
-               | Some y -> y :: filter_map tl f
-               | None -> filter_map tl f
+
+module String = struct
+  include String
+
+  let start_with prefix s =
+    if String.length prefix <= String.length s then
+      try
+        for i = 0 to String.length prefix - 1 do
+          if unsafe_get prefix i <> unsafe_get s i then raise Exit
+        done;
+        true
+      with Exit -> false
+    else false
+end
 
 module Timeseries = struct
   module MW = Map.Make(Calendar)
@@ -247,6 +255,32 @@ module Commit = struct
                            ?start ?stop (fun f -> Set.iter f commits) in
     Timeseries.map l squash_into_01
 end
+
+module Tag = struct
+  type t = { r: Git.Reference.t;
+             name: string;
+             date: Calendar.t;
+           }
+
+  let name t = t.name
+  let date t = t.date
+
+  let get_ref t r =
+    let s = Git.Reference.to_raw r in
+    if String.start_with "refs/tags/" s then
+      Store.read_reference_exn t r >>= fun sha ->
+      read_commit_exn t sha >|= fun commit ->
+      let t, _ = Git.(commit.Commit.author.User.date) in (* FIXME: Use TZ *)
+      Some({ r;
+             name = String.sub s 10 (String.length s - 10);
+             date = Calendar.from_unixfloat (Int64.to_float t) })
+    else return_none
+
+  let get t =
+    Store.references t >>= fun r ->
+    Lwt_list.filter_map_p (get_ref t) r
+end
+
 
 module History = Graph.Persistent.Digraph.ConcreteBidirectional(Commit)
 

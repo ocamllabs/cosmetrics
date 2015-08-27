@@ -94,6 +94,19 @@ module Commit : sig
   ;;
 end
 
+module Tag : sig
+  type t
+  (** Git tag. *)
+
+  val name : t -> string
+
+  val date : t -> Calendar.t
+
+  val get : Git_unix.FS.t -> t list Lwt.t
+  ;;
+end
+
+
 (** DAG of commits. *)
 module History : Graph.Sig.P  with type V.t = Commit.t
 
