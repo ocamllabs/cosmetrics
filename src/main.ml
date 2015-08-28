@@ -171,19 +171,23 @@ let contribution_order html repo_commits =
   H.print html "</td></tr></table>\n"
 
 (* The tag list is supposed to be sorted by increasing dates. *)
-let rec average_periods (sum, n) = function
+let rec average_periods ~apart ((sum, n) as acc) = function
   | [] | [_] -> sum /. float n
   | d0 :: ((d1 :: _) as tl) ->
      let d0 = Calendar.to_unixfloat(Cosmetrics.Tag.date d0) in
      let d1 = Calendar.to_unixfloat(Cosmetrics.Tag.date d1) in
-     average_periods (sum +. (d1 -. d0), n + 1) tl
+     let d = d1 -. d0 in
+     if d >= apart then average_periods ~apart (sum +. d, n + 1) tl
+     else average_periods ~apart acc tl
 
-let average_releases html remotes =
+let one_day = 60. *. 60. *. 24. (* sec *)
+
+let average_releases html ?(apart=one_day) remotes =
   let process_repo (pkg, remote_uri, _) =
     Cosmetrics.get_store remote_uri >>= fun store ->
     Cosmetrics.Tag.get store >|= fun tags ->
     let tags = List.sort Cosmetrics.Tag.cmp_date tags in
-    let avg = average_periods (0., 0) tags in
+    let avg = average_periods ~apart (0., 0) tags in
     (pkg, avg)
   in
   Lwt_list.map_p process_repo remotes >|= fun repo_average ->
