@@ -111,7 +111,8 @@ let paths html repo_commits =
                  );
         (* We did not find a contribution to another repo, make a
            link from the 1st repo to itself. *)
-        m.(!fst_repo).(!fst_repo) <- m.(!fst_repo).(!fst_repo) +. 1.;
+        if !fst_repo >= 0 then
+          m.(!fst_repo).(!fst_repo) <- m.(!fst_repo).(!fst_repo) +. 1.;
     with Exit -> ()
   in
   Cosmetrics.StringMap.iter process_author a;
@@ -148,20 +149,23 @@ let contribution_order html repo_commits =
   Cosmetrics.StringMap.iter process_author a_ts;
   let n_authors = float(Cosmetrics.StringMap.cardinal a_ts) in
   let display_table ~nth =
-    let c = c.(nth) in
-    let a = a.(nth) in
-    let repos = List.mapi (fun i (r,_,_) -> r, c.(i), a.(i)) repo_commits in
-    let repos = List.sort (fun (_,c1,_) (_,c2,_) -> compare (c2:int) c1) repos in
-    H.print html "<table class='contribution-order'>";
-    H.printf html "<tr><th colspan='2'>Repo #%d contrib</th></tr>" (nth + 1);
-    List.iter (fun (r,c,a) ->
-               let title = String.concat ", " (S.elements a) in
-               H.printf html "<tr %s><td>%s</td><td title='%s'\
-                              >%d (%.1f%%)</td></tr>\n"
-                        (if c = 0 then "class='not-important'" else "")
-                        r title c (100. *. float c /. n_authors)
-              ) repos;
-    H.print html "</table>" in
+    if nth < n then (
+      let c = c.(nth) in
+      let a = a.(nth) in
+      let repos = List.mapi (fun i (r,_,_) -> r, c.(i), a.(i)) repo_commits in
+      let repos =
+        List.sort (fun (_,c1,_) (_,c2,_) -> compare (c2:int) c1) repos in
+      H.print html "<table class='contribution-order'>";
+      H.printf html "<tr><th colspan='2'>Repo #%d contrib</th></tr>" (nth + 1);
+      List.iter (fun (r,c,a) ->
+                 let title = String.concat ", " (S.elements a) in
+                 H.printf html "<tr %s><td>%s</td><td title='%s'\
+                                >%d (%.1f%%)</td></tr>\n"
+                          (if c = 0 then "class='not-important'" else "")
+                          r title c (100. *. float c /. n_authors)
+                ) repos;
+      H.print html "</table>"
+    ) in
   H.print html "<table><tr><td>\n";
   display_table ~nth:0;
   H.print html "</td><td>";
@@ -188,15 +192,15 @@ let average_releases html ?(apart=one_day) remotes =
     Cosmetrics.Tag.get store >|= fun tags ->
     let tags = List.sort Cosmetrics.Tag.cmp_date tags in
     let avg = average_periods ~apart (0., 0) tags in
-    (pkg, avg)
+    (pkg, tags, avg)
   in
   Lwt_list.map_p process_repo remotes >|= fun repo_average ->
   let repo_average =
-    List.sort (fun (_,a1) (_,a2) -> compare a1 a2) repo_average in
+    List.sort (fun (_,_,a1) (_,_,a2) -> compare a1 a2) repo_average in
   H.print html "<h2>Average time between releases</h2>\n";
   H.print html "<table class='average-releases'>\n  \
                 <tr><td>Repo</td><td>Average</td></tr>\n";
-  let print (pkg, avg) =
+  let print (pkg, tags, avg) =
     let name = OpamPackage.(Name.to_string (name pkg)) in
     let days = avg /. 86400. in
     let months = days /. 30. in
@@ -204,7 +208,9 @@ let average_releases html ?(apart=one_day) remotes =
               if months < 1. then "/" (* not serious *)
               else Printf.sprintf "≈ %.0f months" months
             else "/" in
-    H.printf html "<tr><td>%s</td><td>%s</td></tr>\n" name a in
+    let tags = List.map Cosmetrics.Tag.name tags in
+    H.printf html "<tr><td>%s</td><td><span title=%s>%s</span></td></tr>\n"
+             name (H.single_quote (String.concat ", " tags)) a in
   List.iter print repo_average;
   H.print html "</table>\n"
 
@@ -372,7 +378,9 @@ let () =
 
   let select pkg opam =
     (* Irmin uses > 8.5Gb to process llvm! *)
-    OpamPackage.(Name.to_string (name pkg)) <> "llvm" in
+    (* OpamPackage.(Name.to_string (name pkg)) <> "llvm" *)
+    OpamPackage.(Name.to_string (name pkg)) = "mybuild"
+  in
   let repos = Cosmetrics_opam.git ~select () in
   Printf.printf "# repos: %d\n%!" (List.length repos);
   (* let repos = take 10 repos in *)
