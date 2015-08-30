@@ -361,12 +361,12 @@ let rec take n = function
 
 
 let () =
-  let clone_script = ref false in
+  let clone = ref false in
   let compact_repos = ref false in
   let compact_repo = ref "" in
   let specs = [
-      "--clone-script", Arg.Set clone_script,
-      " Output a script to clone all repositories";
+      "--clone", Arg.Set clone,
+      " Clone or update the repositories of the selected packages";
       "--compact-repos", Arg.Set compact_repos,
       " Extract the history from each repository and save a compact form";
       "--compact-repo", Arg.Set_string compact_repo,
@@ -377,9 +377,8 @@ let () =
   Arg.parse specs (fun _ -> raise(Arg.Bad "No anomynous arg")) usage_msg;
 
   let select pkg opam =
-    (* Irmin uses > 8.5Gb to process llvm! *)
-    (* OpamPackage.(Name.to_string (name pkg)) <> "llvm" *)
-    OpamPackage.(Name.to_string (name pkg)) = "mybuild"
+    (* OpamPackage.(Name.to_string (name pkg)) = "mybuild" *)
+    true
   in
   let repos = Cosmetrics_opam.git ~select () in
   Printf.printf "# repos: %d\n%!" (List.length repos);
@@ -394,24 +393,19 @@ let () =
 
   (try Unix.mkdir project 0o775 with _ -> ());
   Unix.chdir project;
-  if !clone_script then (
-    (* Write a file for the initial cloning using Git. *)
-    let fh = open_out_gen [Open_creat; Open_wronly; Open_trunc]
-                          0o755 "clone_repos.sh" in
-    Printf.fprintf fh "#!/bin/sh\n\n";
-    Printf.fprintf fh "REPO_DIR=repo/\n";
-    let get_repo (pkg, remote_uri) =
-      Printf.fprintf fh "# %s =>\n" (OpamPackage.to_string pkg);
-      Printf.fprintf fh "git clone --no-checkout %s ${REPO_DIR}%s\n"
-                     remote_uri (dir_of_uri remote_uri) in
-    List.iter get_repo repos;
-    close_out fh;
+  if !clone then (
+    let clone (pkg, remote_uri) =
+      Lwt_io.printf "Cloning repo %s\n%!"
+                    (OpamPackage.to_string pkg) >>= fun () ->
+      Cosmetrics.get_store remote_uri >>= fun _ ->
+      return_unit in
+    Lwt_main.run(Lwt_list.iter_s clone repos);
     exit 0;
   );
   if !compact_repos || !compact_repo <> "" then (
     let compact_1repo (pkg, remote_uri) =
       Printf.printf "→ %s %!" (OpamPackage.(Name.to_string (name pkg)));
-      Cosmetrics.get_store remote_uri ~update:true >>= fun store ->
+      Cosmetrics.get_store remote_uri ~update:false >>= fun store ->
       Cosmetrics.commits store >>= fun c ->
       Printf.printf "(%d commits)\n%!" (C.Commit.Set.cardinal c);
 

@@ -360,8 +360,8 @@ let get_store ?(repo_dir="repo") ?(update=false) remote_uri =
   let dir = try Filename.chop_extension dir with _ -> dir in
   let root = Filename.concat repo_dir dir in
   (if not(Sys.file_exists root) then (
-     (* Irmin Git is using too much memory for some repos.
-        https://github.com/mirage/irmin/issues/263  Use Git to do the
+     (* OCaml Git is using too much memory for some repos.
+        https://github.com/mirage/ocaml-git/issues/125  Use Git to do the
         initial cloning. *)
      let cmd = "", [| "git"; "clone"; "--no-checkout"; remote_uri; root |] in
      Lwt_process.exec cmd >>= fun st ->
