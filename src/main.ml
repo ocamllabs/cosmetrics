@@ -265,15 +265,9 @@ let main project repo_commits =
   let repo_commits =
     List.sort (fun (n1,_,_) (n2,_,_) -> String.compare n1 n2) repo_commits in
 
-  let add_links html =
-    H.print html "<a href=\"index.html\">All</a>\n";
-    let link (repo, _, _) =
-      H.printf html "<a href=\"%s.html\">%s</a>\n" repo repo in
-    List.iter link repo_commits in
   let process ?(busyness=true) ?(more_graphs=fun _ -> ())
               ?(more=fun _ -> return_unit) ?fname
               (repo, _, commits) =
-    let fname = match fname with Some n -> n | None -> repo ^ ".html" in
     let html = H.make () in
     H.style html "div.graph {
                   float: right;
@@ -294,12 +288,13 @@ let main project repo_commits =
                   .main {
                     color: #336600;
                   }";
-    add_links html;
+    H.print html "<a href='index.html'>Index</a>";
     H.printf html "<h1>Stats for %s (project = %s)</h1>" repo project;
     let alv = graph html ~start ~stop repo commits ~busyness in
     more_graphs html;
     add_stats html repo commits;
     more html >>= fun () ->
+    let fname = match fname with Some n -> n | None -> repo ^ ".html" in
     H.write html fname >>= fun () ->
     return alv
   in
@@ -336,11 +331,25 @@ let main project repo_commits =
     average_releases html repo_commits;
   in
   process ("all repositories", None, all_commits)
-          ~fname:"index.html"
+          ~fname:"All_repositories.html"
           ~busyness:false
           ~more_graphs:global_graphs
           ~more:global_tables
-  >>= fun _ -> return_unit
+  >>= fun _ ->
+  (* Create the index page *)
+  let html = H.make () in
+  H.print html "<h1>Global stats</h1>";
+  H.print html "<ul>";
+  H.print html "<li><a href='All_repositories.html'>Global</a></li>\n";
+  H.print html "</ul>";
+  H.print html "<h1>Repositories</h1>\n\
+                <ol>\n";
+  let link (repo, _, _) =
+    H.printf html "<li><a href=\"%s.html\">%s</a></li>\n" repo repo in
+  List.iter link repo_commits;
+  H.print html "</ol>\n";
+  H.write html "index.html"
+
 
 let rec take n = function
   | [] -> []
