@@ -199,17 +199,21 @@ let average_releases html ?(apart=one_day) remotes =
     List.sort (fun (_,_,a1) (_,_,a2) -> compare a1 a2) repo_average in
   H.print html "<h2>Average time between releases</h2>\n";
   H.print html "<table class='average-releases'>\n  \
-                <tr><td>Repo</td><td>Average</td></tr>\n";
+                <tr><td>Repo</td><td># tags</td><td>Average</td></tr>\n";
   let print (pkg, tags, avg) =
     let days = avg /. 86400. in
     let months = days /. 30. in
     let a = if is_finite months then
-              if months < 1. then "/" (* not serious *)
+              if months < 1. then
+                Printf.sprintf "<span class='not-important'>≈ %.0f days</span>"
+                               days
               else Printf.sprintf "≈ %.0f months" months
             else "/" in
     let tags = List.map Cosmetrics.Tag.name tags in
-    H.printf html "<tr><td>%s</td><td><span title=%s>%s</span></td></tr>\n"
-             pkg (H.single_quote (String.concat ", " tags)) a in
+    H.printf html "<tr><td>%s</td><td><span title=%s>%d</span></td>\
+                   <td>%s</td></tr>\n"
+             pkg (H.single_quote (String.concat ", " tags))
+             (List.length tags) a in
   List.iter print repo_average;
   H.print html "</table>\n"
 
