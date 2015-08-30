@@ -118,6 +118,11 @@ module StringMap : Map.S  with type key = string
 val get_store : ?repo_dir: string -> ?update: bool -> Git.Gri.t
                 -> Git_unix.FS.t Lwt.t
 
+type classification = | OCaml | C
+                      | Undecided of string
+
+val classify : Git_unix.FS.t -> classification Lwt.t
+
 val commits : ?merge_commits: bool -> Git_unix.FS.t -> Commit.Set.t Lwt.t
 (** Return the commits in the history.  Unless [merge_commits] is
     [true], the merge commits are not returned (this is the default). *)

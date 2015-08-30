@@ -13,6 +13,14 @@ let read_commit_exn t sha =
   | Git.Value.Tree _ ->
      fail(Failure "Cosmetrics.read_commit_exn: not a commit value")
 
+let read_tree_exn t sha =
+  Store.read_exn t (Git.SHA.of_tree sha) >>= fun v ->
+  match v with
+  | Git.Value.Tree c -> return c
+  | Git.Value.Blob _ | Git.Value.Tag _
+  | Git.Value.Commit _ ->
+     fail(Failure "Cosmetrics.read_tree_exn: not a tree value")
+
 
 module String = struct
   include String
@@ -22,6 +30,17 @@ module String = struct
       try
         for i = 0 to String.length prefix - 1 do
           if unsafe_get prefix i <> unsafe_get s i then raise Exit
+        done;
+        true
+      with Exit -> false
+    else false
+
+  let end_with postfix s =
+    let ofs = String.length s - String.length postfix in
+    if ofs >= 0 then
+      try
+        for i = 0 to String.length postfix - 1 do
+          if unsafe_get postfix i <> unsafe_get s (ofs + i) then raise Exit
         done;
         true
       with Exit -> false
@@ -476,6 +495,45 @@ let get_store ?(repo_dir="repo") ?(update=false) remote_uri =
      return_unit)
   >>= fun () ->
   return t
+
+
+type classification = | OCaml | C
+                      | Undecided of string
+
+let is_ml e = Git.Tree.(e.perm = `Normal && String.end_with ".ml" e.name)
+
+let is_c e = Git.Tree.(e.perm = `Normal && String.end_with ".c" e.name)
+
+let is_src e = Git.Tree.(e.perm = `Dir && (e.name = "src" || e.name = "lib"))
+
+let tree_of_value t = function
+  | Git.Value.Blob _ -> fail(Failure "Cosmetrics.tree_of_value: blob")
+  | Git.Value.Tag _ -> fail(Failure "Cosmetrics.tree_of_value: tag")
+  | Git.Value.Tree tree -> return tree
+  | Git.Value.Commit c -> read_tree_exn t c.Git.Commit.tree
+
+let classify_tree t tree =
+  if List.exists is_ml tree then return OCaml
+  else
+    try
+      let src = List.find is_src tree in
+      Store.read_exn t src.Git.Tree.node >>= fun v ->
+      tree_of_value t v >|= fun tree ->
+      if List.exists is_ml tree then OCaml
+      else if List.exists is_c tree then C
+      else Undecided "No .ml nor .c file found"
+    with Not_found ->
+      return(Undecided "No toplevel .ml nor src/ or lib/ dirs")
+
+let classify t =
+  Store.read_reference t Git.Reference.head >>= fun sha ->
+  match sha with
+  | None -> return(Undecided "No head!")
+  | Some sha ->
+     Store.read_exn t (Git.SHA.of_commit sha) >>= fun v ->
+     catch (fun () -> tree_of_value t v >>= fun tree -> classify_tree t tree)
+           (function Failure m -> return(Undecided m)
+                   | e -> fail e)
 
 module StringMap = Map.Make(String)
 
