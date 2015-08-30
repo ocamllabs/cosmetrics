@@ -3,6 +3,7 @@ open CalendarLib
 module C = Cosmetrics
 module T = C.Timeseries
 module H = Cosmetrics_html
+open Cosmetrics_utils
 
 let is_finite x = neg_infinity < x && x < infinity
 

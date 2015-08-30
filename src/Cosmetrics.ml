@@ -1,6 +1,7 @@
 
 open Lwt
 open CalendarLib
+open Cosmetrics_utils
 
 module Store = Git_unix.FS
 module G = Git_unix.Sync.Make(Store)
@@ -21,41 +22,6 @@ let read_tree_exn t sha =
   | Git.Value.Commit _ ->
      fail(Failure "Cosmetrics.read_tree_exn: not a tree value")
 
-
-module String = struct
-  include String
-
-  let starting ~w:prefix s =
-    if String.length prefix <= String.length s then
-      try
-        for i = 0 to String.length prefix - 1 do
-          if unsafe_get prefix i <> unsafe_get s i then raise Exit
-        done;
-        true
-      with Exit -> false
-    else false
-
-  let ending ~w:postfix s =
-    let ofs = String.length s - String.length postfix in
-    if ofs >= 0 then
-      try
-        for i = 0 to String.length postfix - 1 do
-          if unsafe_get postfix i <> unsafe_get s (ofs + i) then raise Exit
-        done;
-        true
-      with Exit -> false
-    else false
-end
-
-module List = struct
-  include List
-
-  let rec remove_consecutive_duplicates equal = function
-    | ([] | [_]) as l -> l
-    | x :: ((y :: _) as tl) ->
-       if equal x y then remove_consecutive_duplicates equal tl
-       else x :: remove_consecutive_duplicates equal tl
-end
 
 (* Simple cache module. *)
 module Cache = struct
