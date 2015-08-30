@@ -38,6 +38,81 @@ module List = struct
        else x :: remove_consecutive_duplicates equal tl
 end
 
+(* Simple cache module. *)
+module Cache = struct
+  type 'a t = { log: string -> unit Lwt.t;
+               depends: string list;
+               version: string;    (* user version for the data *)
+               update: unit -> 'a Lwt.t;
+               fname: string;      (* filename for the cache *)
+             }
+
+  let log t fmt =
+    Printf.ksprintf t.log fmt
+
+  let open_in fname =
+    Lwt_io.open_file ~flags:[Unix.O_RDONLY]
+                     ~mode:Lwt_io.Input fname
+
+  let open_out fname =
+    Lwt_io.open_file ~flags:[Unix.O_WRONLY; Unix.O_CREAT; Unix.O_TRUNC]
+                     ~mode:Lwt_io.Output fname
+
+  let update t =
+    t.update () >>= fun v ->
+    open_out t.fname >>= fun fh ->
+    Lwt_io.write fh t.version >>= fun () ->
+    Lwt_io.write_char fh '\n' >>= fun () ->
+    Lwt_io.write_value fh v >>= fun () ->
+    Lwt_io.close fh >|= fun () ->
+    v
+
+  let modif_time fname =
+    Lwt_unix.stat fname >|= fun s -> s.Unix.st_mtime
+
+  let is_newer t0 fname =
+    modif_time fname >|= fun t -> t0 < t
+
+  (* FIXME: since the read is likely to occur several times, we could
+     also supplement the disk cache with an in-memory Weak.t one. *)
+  let read_exn t () =
+    (* Check version *)
+    open_in t.fname >>= fun fh ->
+    Lwt_io.read_line fh >>= fun version ->
+    (* Check dependencies *)
+    modif_time t.fname >>= fun t0 ->
+    Lwt_list.exists_s (is_newer t0) t.depends >>= fun newer_dep ->
+    if version <> t.version || newer_dep then (
+      Lwt_io.close fh >>= fun () ->
+      log t "Update cache %s\n" t.fname >>= fun () ->
+      update t
+    )
+    else (
+      Lwt_io.read_value fh >>= fun v ->
+      Lwt_io.close fh >|= fun () ->
+      v
+    )
+
+  let read t =
+    catch (read_exn t)
+          (function Unix.Unix_error(Unix.ENOENT, _, _) ->
+                    (* Cache does not exist, create one *)
+                    log t "Create cache %s\n" t.fname >>= fun () ->
+                    update t
+                  | e -> fail e)
+
+  let default_log s =
+    Lwt_io.write Lwt_io.stdout s >>= fun() ->
+    Lwt_io.flush Lwt_io.stdout
+
+  (** Return a cache.  The cache must be [update]d if any of the
+      files in [depend] is newer or if the [version] does not
+      coincide. *)
+  let make ?(log=default_log) ~depends ~version ~update fname =
+    { log;  depends;  version;  update; fname }
+end
+
+
 module Timeseries = struct
   module MW = Map.Make(Calendar)
 

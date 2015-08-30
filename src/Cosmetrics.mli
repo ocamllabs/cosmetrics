@@ -148,3 +148,14 @@ module Summary : sig
 
   val make_map : Commit.Set.t -> t StringMap.t
 end
+
+module Cache : sig
+  type 'a t
+
+  val make : ?log: (string -> unit Lwt.t) ->
+             depends: string list -> version: string ->
+             update: (unit -> 'a Lwt.t) -> string -> 'a t
+
+  val read : 'a t -> 'a Lwt.t
+
+end
