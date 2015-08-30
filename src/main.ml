@@ -278,7 +278,7 @@ let date_max d1 d2 =
 
 
 
-let classify_repos repo_commits () =
+let filter_ocaml_repos repo_commits =
   let classify (p, remote_uri, commits) =
     C.get_store remote_uri >>= fun store ->
     C.classify store >|= fun cl ->
@@ -288,9 +288,7 @@ let classify_repos repo_commits () =
                           | _ -> None) r
 
 let main project repo_commits =
-  C.Cache.read (C.Cache.make ~depends:[] ~version:"1" "repo.cache"
-                             ~update:(classify_repos repo_commits))
-  >>= fun repo_commits ->
+  filter_ocaml_repos repo_commits >>= fun repo_commits ->
 
   let read_cache (p,r,c) =
     let p = OpamPackage.(Name.to_string(name p)) in
