@@ -335,7 +335,7 @@ let main project repo_commits =
     contribution_order html repo_commits;
     average_releases html repo_commits;
   in
-  process ("all repositories", "", all_commits)
+  process ("all repositories", None, all_commits)
           ~fname:"index.html"
           ~busyness:false
           ~more_graphs:global_graphs
@@ -387,7 +387,7 @@ let () =
       catch update_exn
             (fun e -> Printf.printf "  *** %s\n%!" (Printexc.to_string e);
                     return C.Commit.Set.empty) in
-    let dir = Filename.basename remote_uri in
+    let dir = Filename.basename (Git.Gri.to_string remote_uri) in
     let dir = try Filename.chop_extension dir with _ -> dir in
     let fname = Filename.concat "repo" (dir ^ ".commits") in
     (* FIXME: depend on the Git repo *)

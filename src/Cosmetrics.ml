@@ -444,7 +444,8 @@ let from_github = Str.regexp "https?://github.com/"
 let get_store ?(repo_dir="repo") ?(update=false) remote_uri =
   (* Work around HTTPS irmin bug: https://github.com/mirage/irmin/issues/259 *)
   let remote_uri =
-    Str.replace_first from_github "git://github.com/" remote_uri in
+    let r = Git.Gri.to_string remote_uri in
+    Str.replace_first from_github "git://github.com/" r in
   let dir = Filename.basename remote_uri in
   let dir = try Filename.chop_extension dir with _ -> dir in
   let root = Filename.concat repo_dir dir in
@@ -464,8 +465,8 @@ let get_store ?(repo_dir="repo") ?(update=false) remote_uri =
      return_unit) >>= fun () ->
   Store.create ~root () >>= fun t ->
   (if update then
-     let upstream = Git.Gri.of_string remote_uri in
-     catch (fun () -> G.fetch t upstream ~update:true >>= fun r ->
+     catch (fun () -> G.fetch t (Git.Gri.of_string remote_uri)
+                            ~update:true >>= fun r ->
                     match Git_unix.Sync.Result.head_contents r with
                     | Some h -> Store.write_head t h
                     | None -> return_unit)

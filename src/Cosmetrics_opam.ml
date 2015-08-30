@@ -169,5 +169,5 @@ let git ?(verbose=false) ?(select=fun _ _ -> true) ?(guess_git=guess_git) () =
   let pkgs = S.filter (fun _  (_, c) -> match c with VCS(Git _) -> true
                                                  | _ -> false) !pkgs in
   S.fold (fun _ x l -> match x with
-                     | (pkg, VCS(Git (g, _))) -> (pkg, g) :: l
+                     | (pkg, VCS(Git (g, _))) -> (pkg, Git.Gri.of_string g) :: l
                      | _ -> assert false) pkgs []

@@ -115,7 +115,7 @@ module History : Graph.Sig.P  with type V.t = Commit.t
 
 module StringMap : Map.S  with type key = string
 
-val get_store : ?repo_dir: string -> ?update: bool -> string
+val get_store : ?repo_dir: string -> ?update: bool -> Git.Gri.t
                 -> Git_unix.FS.t Lwt.t
 
 val commits : ?merge_commits: bool -> Git_unix.FS.t -> Commit.Set.t Lwt.t
