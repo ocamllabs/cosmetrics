@@ -48,7 +48,7 @@ module Cache = struct
     open_out t.fname >>= fun fh ->
     Lwt_io.write fh t.version >>= fun () ->
     Lwt_io.write_char fh '\n' >>= fun () ->
-    Lwt_io.write_value fh v >>= fun () ->
+    Lwt_io.write_value fh v ~flags:[Marshal.Closures] >>= fun () ->
     Lwt_io.close fh >|= fun () ->
     v
 
