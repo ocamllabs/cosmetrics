@@ -26,6 +26,10 @@ end
 module List = struct
   include List
 
+  let rec take n = function
+    | [] -> []
+    | x :: tl -> if n <= 0 then [] else x :: take (n - 1) tl
+
   let rec remove_consecutive_duplicates equal = function
     | ([] | [_]) as l -> l
     | x :: ((y :: _) as tl) ->

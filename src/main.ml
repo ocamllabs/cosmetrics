@@ -212,7 +212,17 @@ let contribution_order repo_commits fname =
                 ) repos;
       H.print html "</table>"
     ) in
-  paths html repo_commits;
+  H.print html "<h1>1st contribution → 2nd contribution</h1>";
+  if List.length repo_commits <= 70 then
+    paths html repo_commits
+  else (
+    let c = c.(0) in
+    let repos = List.mapi (fun i x -> x, c.(i)) repo_commits in
+    let repos = List.sort (fun (_,c1) (_,c2) -> compare (c2: int) c1) repos in
+    let repos = List.take 70 repos in
+    let repos = List.map (fun (x,_) -> x) repos in
+    paths html repos
+  );
   H.print html "<table><tr><td>\n";
   display_table ~nth:0;
   H.print html "</td><td>";
@@ -366,11 +376,6 @@ let main project repo_commits =
   H.write html "index.html"
 
 
-let rec take n = function
-  | [] -> []
-  | x :: tl -> if n <= 0 then [] else x :: take (n - 1) tl
-
-
 let () =
   let clone = ref false in
   let specs = [
@@ -387,7 +392,7 @@ let () =
   in
   let repos = Cosmetrics_opam.git ~select () in
   Printf.printf "# repos: %d\n%!" (List.length repos);
-  (* let repos = take 10 repos in *)
+  (* let repos = List.take 10 repos in *)
   let project = "opam-repo" in
 
   (try Unix.mkdir project 0o775 with _ -> ());
