@@ -201,7 +201,6 @@ let average_releases html ?(apart=one_day) remotes =
   H.print html "<table class='average-releases'>\n  \
                 <tr><td>Repo</td><td>Average</td></tr>\n";
   let print (pkg, tags, avg) =
-    let name = OpamPackage.(Name.to_string (name pkg)) in
     let days = avg /. 86400. in
     let months = days /. 30. in
     let a = if is_finite months then
@@ -210,7 +209,7 @@ let average_releases html ?(apart=one_day) remotes =
             else "/" in
     let tags = List.map Cosmetrics.Tag.name tags in
     H.printf html "<tr><td>%s</td><td><span title=%s>%s</span></td></tr>\n"
-             name (H.single_quote (String.concat ", " tags)) a in
+             pkg (H.single_quote (String.concat ", " tags)) a in
   List.iter print repo_average;
   H.print html "</table>\n"
 
@@ -244,50 +243,37 @@ let create_number_projects starts =
   else if Calendar.compare d starts.(n - 1) >= 0 then n
   else index Calendar.compare starts d 0 (n - 1) + 1
 
-let commits_of_file fname =
-  if Sys.file_exists fname then
-    Lwt_io.open_file ~flags:[Unix.O_RDONLY]
-                     ~mode:Lwt_io.Input fname >>= fun ch ->
-    Lwt_io.read_value ch >>= fun v ->
-    Lwt_io.close ch >>= fun () ->
-    return(v: C.Commit.Set.t)
-  else (
-    Lwt_io.printlf "¬∃ %s" fname >>= fun () ->
-    return C.Commit.Set.empty
-  )
-
-let main project remotes =
-  Lwt_list.map_p (fun (pkg, _, commits_fname) ->
-                  commits_of_file commits_fname >>= fun commits ->
-                  return (OpamPackage.to_string pkg, commits)
-                 ) remotes
-  >>= fun repo_commits ->
+let main project repo_commits =
+  let read_cache (p,r,c) =
+    let p = OpamPackage.(Name.to_string(name p)) in
+    C.Cache.read c >|= fun c -> (p,r,c) in
+  Lwt_list.map_p read_cache repo_commits >>= fun repo_commits ->
   let repo_commits =
-    List.filter (fun (_, c) -> not(C.Commit.Set.is_empty c)) repo_commits in
-  Printf.printf "# repositories used: %d\n" (List.length repo_commits);
+    List.filter (fun (_,_,c) -> not(C.Commit.Set.is_empty c)) repo_commits in
+  Lwt_io.printlf "# repositories used: %d" (List.length repo_commits)
+  >>= fun () ->
 
   let start, stop =
     match repo_commits with
-    | (_, commits0) :: tl ->
-       let extremes (d0,d1) (_, commits) =
-         let d0c, d1c = Cosmetrics.Commit.date_range_exn commits in
+    | (_,_, commits0) :: tl ->
+       let extremes (d0,d1) (_,_, commits) =
+         let d0c, d1c = C.Commit.date_range_exn commits in
          (date_min d0 d0c , date_max d1 d1c) in
-       List.fold_left extremes (Cosmetrics.Commit.date_range_exn commits0) tl
+       List.fold_left extremes (C.Commit.date_range_exn commits0) tl
     | [] -> invalid_arg "Empty list of repositories" in
 
-  let repo_commits =
-    List.map (fun (r,c) -> (r, r ^ ".html", c)) repo_commits in
   let repo_commits =
     List.sort (fun (n1,_,_) (n2,_,_) -> String.compare n1 n2) repo_commits in
 
   let add_links html =
     H.print html "<a href=\"index.html\">All</a>\n";
-    let link (repo, fname, _) =
-      H.printf html "<a href=\"%s\">%s</a>\n" fname repo in
+    let link (repo, _, _) =
+      H.printf html "<a href=\"%s.html\">%s</a>\n" repo repo in
     List.iter link repo_commits in
   let process ?(busyness=true) ?(more_graphs=fun _ -> ())
-              ?(more=fun _ -> return_unit)
-              (repo, fname, commits) =
+              ?(more=fun _ -> return_unit) ?fname
+              (repo, _, commits) =
+    let fname = match fname with Some n -> n | None -> repo ^ ".html" in
     let html = H.make () in
     H.style html "div.graph {
                   float: right;
@@ -347,9 +333,10 @@ let main project remotes =
   in
   let global_tables html =
     contribution_order html repo_commits;
-    average_releases html remotes;
+    average_releases html repo_commits;
   in
-  process ("all repositories", "index.html", all_commits)
+  process ("all repositories", "", all_commits)
+          ~fname:"index.html"
           ~busyness:false
           ~more_graphs:global_graphs
           ~more:global_tables
@@ -362,15 +349,9 @@ let rec take n = function
 
 let () =
   let clone = ref false in
-  let compact_repos = ref false in
-  let compact_repo = ref "" in
   let specs = [
       "--clone", Arg.Set clone,
       " Clone or update the repositories of the selected packages";
-      "--compact-repos", Arg.Set compact_repos,
-      " Extract the history from each repository and save a compact form";
-      "--compact-repo", Arg.Set_string compact_repo,
-      "repo Extract the history from the repo and save a compact form";
     ] in
   let specs = Arg.align specs in
   let usage_msg = "" in
@@ -385,51 +366,33 @@ let () =
   (* let repos = take 10 repos in *)
   let project = "opam-repo" in
 
-  let dir_of_uri remote_uri =
-    let dir = Filename.basename remote_uri in
-    try Filename.chop_extension dir with _ -> dir in
-  let commits_fname remote_uri =
-    Filename.concat "repo" (dir_of_uri remote_uri ^ ".commits") in
-
   (try Unix.mkdir project 0o775 with _ -> ());
   Unix.chdir project;
   if !clone then (
     let clone (pkg, remote_uri) =
-      Lwt_io.printf "Cloning repo %s\n%!"
+      Lwt_io.printf "Cloning or updating repo %s\n%!"
                     (OpamPackage.to_string pkg) >>= fun () ->
+      Lwt_io.(flush stdout) >>= fun () ->
       Cosmetrics.get_store remote_uri >>= fun _ ->
       return_unit in
     Lwt_main.run(Lwt_list.iter_s clone repos);
     exit 0;
   );
-  if !compact_repos || !compact_repo <> "" then (
-    let compact_1repo (pkg, remote_uri) =
-      Printf.printf "→ %s %!" (OpamPackage.(Name.to_string (name pkg)));
+  let make_cache (p, remote_uri) =
+    (* Update the store version if the type change. *)
+    let update_exn () : C.Commit.Set.t Lwt.t =
       Cosmetrics.get_store remote_uri ~update:false >>= fun store ->
-      Cosmetrics.commits store >>= fun c ->
-      Printf.printf "(%d commits)\n%!" (C.Commit.Set.cardinal c);
-
-      Lwt_io.open_file ~flags:[Unix.O_WRONLY; Unix.O_CREAT; Unix.O_TRUNC]
-                       ~mode:Lwt_io.Output
-                       (commits_fname remote_uri) >>= fun ch ->
-      Lwt_io.write_value ch c >>= fun () ->
-      Lwt_io.close ch in
-    let compact_1repo r =
-      catch (fun () -> compact_1repo r)
+      Cosmetrics.commits store in
+    let update () =
+      catch update_exn
             (fun e -> Printf.printf "  *** %s\n%!" (Printexc.to_string e);
-                    return_unit) in
-    if !compact_repo <> "" then
-      let is_pkg (pkg, _) =
-        OpamPackage.(Name.to_string (name pkg)) = !compact_repo in
-      (try
-          let r = List.find is_pkg repos in
-          Lwt_main.run(compact_1repo r)
-        with Not_found ->
-          Printf.eprintf "E: Package %S not found.\n" !compact_repo)
-    else
-      Lwt_main.run(Lwt_list.iter_s compact_1repo repos);
-  )
-  else (
-    let repos = List.map (fun (p, r) -> (p, r, commits_fname r)) repos in
-    Lwt_main.run (main project repos)
-  )
+                    return C.Commit.Set.empty) in
+    let dir = Filename.basename remote_uri in
+    let dir = try Filename.chop_extension dir with _ -> dir in
+    let fname = Filename.concat "repo" (dir ^ ".commits") in
+    (* FIXME: depend on the Git repo *)
+    let depends = [] in
+    let cache = C.Cache.make ~depends ~version:"1" ~update fname in
+    (p, remote_uri, cache) in
+  let repos = List.map make_cache repos in
+  Lwt_main.run (main project repos)
