@@ -25,7 +25,7 @@ let read_tree_exn t sha =
 module String = struct
   include String
 
-  let start_with prefix s =
+  let starting ~w:prefix s =
     if String.length prefix <= String.length s then
       try
         for i = 0 to String.length prefix - 1 do
@@ -35,7 +35,7 @@ module String = struct
       with Exit -> false
     else false
 
-  let end_with postfix s =
+  let ending ~w:postfix s =
     let ofs = String.length s - String.length postfix in
     if ofs >= 0 then
       try
@@ -379,7 +379,7 @@ module Tag = struct
       date = Calendar.from_unixfloat (Int64.to_float t) }
 
   let get_ref t r =
-    if String.start_with "refs/tags/" (Git.Reference.to_raw r) then
+    if String.starting ~w:"refs/tags/" (Git.Reference.to_raw r) then
       Store.read_reference_exn t r >>= fun sha ->
       Store.read_exn t (Git.SHA.of_commit sha) >|= fun v ->
       match v with
@@ -500,9 +500,9 @@ let get_store ?(repo_dir="repo") ?(update=false) remote_uri =
 type classification = | OCaml | C
                       | Undecided of string
 
-let is_ml e = Git.Tree.(e.perm = `Normal && String.end_with ".ml" e.name)
+let is_ml e = Git.Tree.(e.perm = `Normal && String.ending ~w:".ml" e.name)
 
-let is_c e = Git.Tree.(e.perm = `Normal && String.end_with ".c" e.name)
+let is_c e = Git.Tree.(e.perm = `Normal && String.ending ~w:".c" e.name)
 
 let is_src e = Git.Tree.(e.perm = `Dir && (e.name = "src" || e.name = "lib"))
 
