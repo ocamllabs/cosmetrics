@@ -62,18 +62,6 @@ let graph html ?(per=`Month) ?(busyness=true) ~start ~stop repo commits =
   )
   else T.empty
 
-let hue h =
-  let f, hi = modf (abs_float h *. 6.) in
-  let f = truncate (256. *. f) in (* 0. ≤ f < 1.  =>  0 ≤ f ≤ 255 *)
-  match mod_float hi 6. with
-  | 0. -> 0xFF0000 lor (f lsl 8)
-  | 1. -> 0x00FF00 lor ((255 - f) lsl 16)
-  | 2. -> 0x00FF00 lor f
-  | 3. -> 0x0000FF lor ((255 - f) lsl 8)
-  | 4. -> 0x0000FF lor (f lsl 16)
-  | 5. -> 0xFF0000 lor (255 - f)
-  | _ -> assert false
-
 (* Copied from http://colorbrewer2.org/ *)
 let color_scheme = [| 0xa6cee3; 0x1f78b4; 0xb2df8a; 0x33a02c; 0xfb9a99;
                       0xe31a1c; 0xfdbf6f; 0xff7f00; 0xcab2d6; 0x6a3d9a;
@@ -81,6 +69,55 @@ let color_scheme = [| 0xa6cee3; 0x1f78b4; 0xb2df8a; 0x33a02c; 0xfb9a99;
 let color =
   let n = Array.length color_scheme in
   fun i -> color_scheme.(i mod n)
+
+let sum = function
+  | [] -> T.empty
+  | [t] -> t
+  | t0 :: tl -> List.fold_left T.sum t0 tl
+
+
+(* Given an array [a] sorted in increasing order and [x] such that
+   [a.(i0) <= x < a.(i1)], find [i] such that [a.(i) <= x < a.(i+1)]. *)
+let rec index cmp a x i0 i1 =
+  let d = i1 - i0 in
+  if d < 2 then i0
+  else let i = i0 + d / 2 in
+       let c = cmp x a.(i) in
+       if c < 0 then index cmp a x i0 i
+       else (* c >= 0 *) index cmp a x i i1
+
+let create_number_projects starts =
+  let starts = Array.of_list(List.sort Calendar.compare starts) in
+  let n = Array.length starts in
+  fun d ->
+  if Calendar.compare d starts.(0) < 0 then 0
+  else if Calendar.compare d starts.(n - 1) >= 0 then n
+  else index Calendar.compare starts d 0 (n - 1) + 1
+
+let busyness repo_commits busys html =
+  let busy = sum busys in
+  let start_time c =
+    let d = fst(C.Commit.date_range_exn c) in
+    (* Match to the start of the chosen period. *)
+    (* FIXME: We have to take into account that busyness spread in
+         the past.  If we do not want to have a % busyness > 100%, we
+         must shift the date. *)
+    let d = Calendar.make (Calendar.year d)
+                          (Date.int_of_month (Calendar.month d) - 2)
+                          1 0 0 0 in
+    d in
+  let starts = List.map (fun (_,_,c) -> start_time c) repo_commits in
+  let number_projects = create_number_projects starts in
+  let n_start = T.mapi busy (fun d s -> float(number_projects d)) in
+  let busy2 = T.mapi busy (fun d s ->
+                           let n = float(number_projects d) in
+                           if n = 0. then 0. else 100. *. s /. n) in
+  H.timeseries html [("Busyness", busy); ("# projects", n_start)]
+               ~y2:[("% Busyness / started projects", busy2)]
+               ~colors:[0x336600; 0xC2C2A3] ~tys:[`Area; `Line]
+               ~colors2:[0xCC6600] ~tys2:[`Line] ~y2min:0.
+               ~ylabel:"# projects" ~y2label:"% projects"
+
 
 let paths html repo_commits =
   let num_commits = List.mapi (fun i (_, _, c) -> (i, c)) repo_commits in
@@ -116,6 +153,11 @@ let paths html repo_commits =
     with Exit -> ()
   in
   Cosmetrics.StringMap.iter process_author a;
+  H.style html "div.chord-graph {
+                  width: 80%;
+                }
+                div.chord {
+                }";
   H.print html "<div class='chord-graph'>";
   let colors = List.mapi (fun i _ -> color i) repo_commits in
   let names = List.map (fun (r,_,_) -> r) repo_commits in
@@ -123,8 +165,8 @@ let paths html repo_commits =
           ~inner_radius:300.;
   H.print html "</div>\n"
 
-
-let contribution_order html repo_commits =
+let contribution_order repo_commits fname =
+  let html = H.make () in
   let module S = Set.Make(String) in
   let num_commits = List.mapi (fun i (_, _, c) -> (i, c)) repo_commits in
   let a_ts = Cosmetrics.authors_timeseries num_commits in
@@ -148,6 +190,9 @@ let contribution_order html repo_commits =
              ) in
   Cosmetrics.StringMap.iter process_author a_ts;
   let n_authors = float(Cosmetrics.StringMap.cardinal a_ts) in
+  H.style html ".not-important {
+                  color: #939393;
+                }";
   let display_table ~nth =
     if nth < n then (
       let c = c.(nth) in
@@ -166,13 +211,15 @@ let contribution_order html repo_commits =
                 ) repos;
       H.print html "</table>"
     ) in
+  paths html repo_commits;
   H.print html "<table><tr><td>\n";
   display_table ~nth:0;
   H.print html "</td><td>";
   display_table ~nth:1;
   H.print html "</td><td>";
   display_table ~nth:2;
-  H.print html "</td></tr></table>\n"
+  H.print html "</td></tr></table>\n";
+  H.write html fname
 
 (* The tag list is supposed to be sorted by increasing dates. *)
 let rec average_periods ~apart ((sum, n) as acc) = function
@@ -186,7 +233,7 @@ let rec average_periods ~apart ((sum, n) as acc) = function
 
 let one_day = 60. *. 60. *. 24. (* sec *)
 
-let average_releases html ?(apart=one_day) remotes =
+let average_releases ?(apart=one_day) remotes fname =
   let process_repo (pkg, remote_uri, _) =
     Cosmetrics.get_store remote_uri >>= fun store ->
     Cosmetrics.Tag.get store >|= fun tags ->
@@ -194,9 +241,13 @@ let average_releases html ?(apart=one_day) remotes =
     let avg = average_periods ~apart (0., 0) tags in
     (pkg, tags, avg)
   in
-  Lwt_list.map_p process_repo remotes >|= fun repo_average ->
+  Lwt_list.map_p process_repo remotes >>= fun repo_average ->
   let repo_average =
     List.sort (fun (_,_,a1) (_,_,a2) -> compare a1 a2) repo_average in
+  let html = H.make () in
+  H.style html ".average-releases .not-important {
+                  color: #939393;
+                }";
   H.print html "<h2>Average time between releases</h2>\n";
   H.print html "<table class='average-releases'>\n  \
                 <tr><td>Repo</td><td># tags</td><td>Average</td></tr>\n";
@@ -215,7 +266,8 @@ let average_releases html ?(apart=one_day) remotes =
              pkg (H.single_quote (String.concat ", " tags))
              (List.length tags) a in
   List.iter print repo_average;
-  H.print html "</table>\n"
+  H.print html "</table>\n";
+  H.write html fname
 
 let date_min d1 d2 =
   if Calendar.compare d1 d2 <= 0 then d1 else d2
@@ -223,29 +275,6 @@ let date_min d1 d2 =
 let date_max d1 d2 =
   if Calendar.compare d1 d2 >= 0 then d1 else d2
 
-let sum = function
-  | [] -> T.empty
-  | [t] -> t
-  | t0 :: tl -> List.fold_left T.sum t0 tl
-
-
-(* Given an array [a] sorted in increasing order and [x] such that
-   [a.(i0) <= x < a.(i1)], find [i] such that [a.(i) <= x < a.(i+1)]. *)
-let rec index cmp a x i0 i1 =
-  let d = i1 - i0 in
-  if d < 2 then i0
-  else let i = i0 + d / 2 in
-       let c = cmp x a.(i) in
-       if c < 0 then index cmp a x i0 i
-       else (* c >= 0 *) index cmp a x i i1
-
-let create_number_projects starts =
-  let starts = Array.of_list(List.sort Calendar.compare starts) in
-  let n = Array.length starts in
-  fun d ->
-  if Calendar.compare d starts.(0) < 0 then 0
-  else if Calendar.compare d starts.(n - 1) >= 0 then n
-  else index Calendar.compare starts d 0 (n - 1) + 1
 
 let main project repo_commits =
   let read_cache (p,r,c) =
@@ -274,26 +303,16 @@ let main project repo_commits =
               (repo, _, commits) =
     let html = H.make () in
     H.style html "div.graph {
-                  float: right;
+                    float: right;
                     margin-right: 2ex;
                     width: 60%;
                     height: 30ex;
-                  }
-                  div.chord-graph {
-                    float: right;
-                    width: 70%;
-                  }
-                  div.chord {
-                    float: right;
-                  }
-                  .not-important {
-                    color: #939393;
                   }
                   .main {
                     color: #336600;
                   }";
     H.print html "<a href='index.html'>Index</a>";
-    H.printf html "<h1>Stats for %s (project = %s)</h1>" repo project;
+    H.printf html "<h1>Commits and authors (project = %s)</h1>" project;
     let alv = graph html ~start ~stop repo commits ~busyness in
     more_graphs html;
     add_stats html repo commits;
@@ -305,46 +324,25 @@ let main project repo_commits =
   let all_commits = List.fold_left C.Commit.Set.union C.Commit.Set.empty
                                    (List.map (fun (_,_,c) -> c) repo_commits) in
   Lwt_list.map_p process repo_commits >>= fun busys ->
-  let global_graphs html =
-    let busy = sum busys in
-    let start_time c =
-      let d = fst(C.Commit.date_range_exn c) in
-      (* Match to the start of the chosen period. *)
-      (* FIXME: We have to take into account that busyness spread in
-         the past.  If we do not want to have a % busyness > 100%, we
-         must shift the date. *)
-      let d = Calendar.make (Calendar.year d)
-                            (Date.int_of_month (Calendar.month d) - 2)
-                            1 0 0 0 in
-      d in
-    let starts = List.map (fun (_,_,c) -> start_time c) repo_commits in
-    let number_projects = create_number_projects starts in
-    let n_start = T.mapi busy (fun d s -> float(number_projects d)) in
-    let busy2 = T.mapi busy (fun d s ->
-                             let n = float(number_projects d) in
-                             if n = 0. then 0. else 100. *. s /. n) in
-    H.timeseries html [("Busyness", busy); ("# projects", n_start)]
-                 ~y2:[("% Busyness / started projects", busy2)]
-                 ~colors:[0x336600; 0xC2C2A3] ~tys:[`Area; `Line]
-                 ~colors2:[0xCC6600] ~tys2:[`Line] ~y2min:0.
-                 ~ylabel:"# projects" ~y2label:"% projects";
-    paths html repo_commits;
-  in
-  let global_tables html =
-    contribution_order html repo_commits;
-    average_releases html repo_commits;
-  in
-  process ("all repositories", None, all_commits)
-          ~fname:"All_repositories.html"
-          ~busyness:false
-          ~more_graphs:global_graphs
-          ~more:global_tables
-  >>= fun _ ->
+  let more =
+    [("Commits and authors",
+      (fun fname -> process ("all repositories", None, all_commits) ~fname
+                          ~busyness:false
+                          ~more_graphs:(busyness repo_commits busys)
+                  >>= fun _ -> return_unit),
+      "All_repositories.html");
+     ("Contribution order",
+      contribution_order repo_commits, "contribution.html");
+     ("Average time between releases",
+      average_releases repo_commits, "average-releases.html");
+    ] in
+  Lwt_list.iter_p (fun (_, f, h) -> f h) more >>= fun () ->
   (* Create the index page *)
   let html = H.make () in
   H.print html "<h1>Global stats</h1>";
   H.print html "<ul>";
-  H.print html "<li><a href='All_repositories.html'>Global</a></li>\n";
+  List.iter (fun (t, _, h) -> H.printf html "<li><a href=%s>%s</a></li>"
+                                     (H.single_quote h) t) more;
   H.print html "</ul>";
   H.print html "<h1>Repositories</h1>\n\
                 <ol>\n";
