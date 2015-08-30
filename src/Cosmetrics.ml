@@ -28,6 +28,16 @@ module String = struct
     else false
 end
 
+module List = struct
+  include List
+
+  let rec remove_consecutive_duplicates equal = function
+    | ([] | [_]) as l -> l
+    | x :: ((y :: _) as tl) ->
+       if equal x y then remove_consecutive_duplicates equal tl
+       else x :: remove_consecutive_duplicates equal tl
+end
+
 module Timeseries = struct
   module MW = Map.Make(Calendar)
 
@@ -290,6 +300,10 @@ module Tag = struct
 
   let get t =
     Store.references t >>= fun r ->
+    (* Because of the bug https://github.com/mirage/ocaml-git/issues/124
+       remove possible duplicates in the list. *)
+    let r = List.sort Git.Reference.compare r in
+    let r = List.remove_consecutive_duplicates Git.Reference.equal r in
     Lwt_list.filter_map_p (get_ref t) r
 end
 
