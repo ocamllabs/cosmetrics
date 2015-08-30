@@ -283,17 +283,14 @@ let classify_repos repo_commits () =
     C.get_store remote_uri >>= fun store ->
     C.classify store >|= fun cl ->
     (p, remote_uri, commits, cl) in
-  Lwt_list.map_p classify repo_commits
+  Lwt_list.map_p classify repo_commits >|= fun r ->
+  List.filter_map (function (p,r,c, C.OCaml) -> Some (p,r,c)
+                          | _ -> None) r
 
 let main project repo_commits =
   C.Cache.read (C.Cache.make ~depends:[] ~version:"1" "repo.cache"
                              ~update:(classify_repos repo_commits))
   >>= fun repo_commits ->
-
-  let repo_commits =
-    List.filter_map (function (p,r,c, C.OCaml) -> Some (p,r,c)
-                            | _ -> None)
-                    repo_commits in
 
   let read_cache (p,r,c) =
     let p = OpamPackage.(Name.to_string(name p)) in
