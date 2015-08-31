@@ -216,13 +216,14 @@ let contribution_order repo_commits fname =
       H.print html "</table>"
     ) in
   H.print html "<h1>1st contribution → 2nd contribution</h1>";
-  if List.length repo_commits <= 70 then
+  let n_buckets = 80 in
+  if List.length repo_commits <= n_buckets then
     paths html repo_commits
   else (
     let c = c.(0) in
     let repos = List.mapi (fun i x -> x, c.(i)) repo_commits in
     let repos = List.sort (fun (_,c1) (_,c2) -> compare (c2: int) c1) repos in
-    let repos = List.take 70 repos in
+    let repos = List.take n_buckets repos in
     let repos = List.map (fun (x,_) -> x) repos in
     paths html repos
   );
