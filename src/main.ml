@@ -21,6 +21,25 @@ let list_people html commits =
             ) summary;
   H.printf html "</ol>"
 
+(* Graph of "% of commits" → "# of authors".
+   [n] is the number of bins (for the range) *)
+let graph_commit_contribution html ?(n=20) commits =
+  let smry = Cosmetrics.Summary.make_map commits in
+  let max_pct = C.StringMap.fold (fun _ s m -> max m s.C.Summary.pct) smry 0. in
+  let max_pct = ceil max_pct in
+  let d = max_pct /. float n in
+  let x = Array.init n (fun i -> (float(i + 1)) *. d) in
+  let y = Array.make n 0. in
+  C.StringMap.iter (fun _ s ->
+                    let i = truncate (s.C.Summary.pct /. d) in
+                    let i = min i (n - 1) in
+                    y.(i) <- y.(i) +. 1.;
+                   ) smry;
+  let y = Array.map (fun y -> if y = 0. then 0. else log10 y) y in
+  H.xy html x ~xlabel:"%" ~ty:`Bar
+       ~ylabel:"log₁₀(# authors)" ~colors:[0x336600]
+       ["log₁₀ Authors", y]
+
 let rec cummulative_loop prev = function
   | [] -> []
   | x :: tl -> let prev = prev +. x in prev :: cummulative_loop prev tl
@@ -341,6 +360,7 @@ let main project repo_commits =
 
     let alv = graph html ~start ~stop repo commits ~busyness in
     more_graphs html;
+    graph_commit_contribution html commits;
     if want_list_people then list_people html commits;
     more html >>= fun () ->
     let fname = match fname with Some n -> n | None -> repo ^ ".html" in
