@@ -44,7 +44,7 @@ let string_of_type = function
 let rec list_make n v =
   if n <= 0 then [] else v :: list_make (n - 1) v
 
-let graph_gen name html ~xtype ~print_x ~print_y1 ~print_y2
+let graph_gen name html ~axisx ~print_x ~print_y1 ~print_y2
               ?(ty=`Area)
               ?(y2label="") ?tys2 ?(colors2=[]) ?y2min ?y2max ?(y2=[])
               ?(ylabel="") ?tys ?ymin ?ymax ~colors y1 =
@@ -113,7 +113,7 @@ let graph_gen name html ~xtype ~print_x ~print_y1 ~print_y2
                     %s\n
                   },
                   y: {
-                    label: %s," xtype (single_quote ylabel);
+                    label: %s," axisx (single_quote ylabel);
   (match ymin with Some y -> printf html "min: %g," y
                  | None -> ());
   (match ymax with Some y -> printf html "max: %g," y
@@ -163,14 +163,14 @@ let timeseries html ?(xlabel="") ?(ty=`Area)
   let print_x html = print html (String.concat ", " (T.values x)) in
   let print_y1 html i _ = print_serie html (n2 + i) t
   and print_y2 html i _ = print_serie html i t in
-  let xtype = Printf.sprintf "type: 'timeseries',
+  let axisx = Printf.sprintf "type: 'timeseries',
+                              label: %s,
                               tick: {
                                 format: '%%Y-%%m',
                                 fit: true,
                                 count: 20,
-                                label: %s,
                               }" (single_quote xlabel) in
-  graph_gen "timeseries" html ~xtype ~print_x ~print_y1 ~print_y2
+  graph_gen "timeseries" html ~axisx ~print_x ~print_y1 ~print_y2
             ~ty ?y2label ?tys2 ?colors2 ?y2min ?y2max ~y2
             ?ylabel ?tys ?ymin ?ymax ~colors ts
 
@@ -188,11 +188,11 @@ let xy html ?(xlabel="") x  ?(ty=`Line)
        ?ylabel ?tys ?ymin ?ymax ~colors y1 =
   let print_x html =
     for i = 0 to Array.length x - 1 do printf html "%f, " x.(i) done in
-  let xtype = Printf.sprintf "tick: {
+  let axisx = Printf.sprintf "label: %s,
+                              tick: {
                                 fit: true,
-                                label: %s,
                               }" (single_quote xlabel) in
-  graph_gen "xy" html ~xtype ~print_x
+  graph_gen "xy" html ~axisx ~print_x
             ~print_y1:print_array
             ~print_y2:print_array
             ~ty ?y2label ?tys2 ?colors2 ?y2min ?y2max ?y2
