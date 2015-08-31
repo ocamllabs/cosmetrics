@@ -159,6 +159,9 @@ let paths html repo_commits =
                 }
                 div.chord {
                 }";
+  H.print html "<p class='explanations'>The color of the chords is the
+                color of the target.  When a given node is selected,
+                the outbound links are stroked with black.</p>";
   H.print html "<div class='chord-graph'>";
   let colors = List.mapi (fun i _ -> color i) repo_commits in
   let names = List.map (fun (r,_,_) -> r) repo_commits in
@@ -362,7 +365,7 @@ let main project repo_commits =
   Lwt_list.iter_p (fun (_, f, h) -> f h) more >>= fun () ->
   (* Create the index page *)
   let html = H.make () in
-  H.print html "<h1>Global stats</h1>";
+  H.printf html "<h1>Global stats (project = %s)</h1>" project;
   H.print html "<ul>";
   List.iter (fun (t, _, h) -> H.printf html "<li><a href=%s>%s</a></li>"
                                      (H.single_quote h) t) more;
@@ -394,8 +397,7 @@ let () =
   let specs = Arg.align specs in
   let usage_msg = "" in
   Arg.parse specs (fun _ -> raise(Arg.Bad "No anomynous arg")) usage_msg;
-  let project = if !project = "" then "opam.project"
-                else !project ^ ".project" in
+  let project = if !project = "" then "opam" else !project in
 
   let select =
     if !desired_tags = [] then (fun _ _ -> true)
@@ -410,8 +412,9 @@ let () =
   Printf.printf "# repos: %d\n%!" (List.length repos);
   (* let repos = List.take 10 repos in *)
 
-  (try Unix.mkdir project 0o775 with _ -> ());
-  Unix.chdir project;
+  let project_dir = project ^ ".project" in
+  (try Unix.mkdir project_dir 0o775 with _ -> ());
+  Unix.chdir project_dir;
   if !clone then (
     let clone (pkg, remote_uri) =
       Lwt_io.printf "Cloning or updating repo %s\n%!"
