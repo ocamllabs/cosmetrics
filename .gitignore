@@ -6,5 +6,4 @@
 /setup.log
 /setup.ml
 /*.html
-/mirage/
-/opam-repo/
+*.project/

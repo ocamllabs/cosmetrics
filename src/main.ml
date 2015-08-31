@@ -375,25 +375,40 @@ let main project repo_commits =
   H.print html "</ol>\n";
   H.write html "index.html"
 
+module StringSet = Set.Make(String)
 
 let () =
   let clone = ref false in
+  let desired_tags = ref [] in
+  let project = ref "" in
   let specs = [
       "--clone", Arg.Set clone,
       " Clone or update the repositories of the selected packages";
+      "--tag", Arg.String (fun s -> desired_tags := s :: !desired_tags),
+      "t Only deal with packages possessing this tag";
+      "-t", Arg.String (fun s -> desired_tags := s :: !desired_tags),
+      "t Only deal with packages possessing this tag";
+      "--project", Arg.Set_string project,
+      "p Name the project dir <p>.project";
     ] in
   let specs = Arg.align specs in
   let usage_msg = "" in
   Arg.parse specs (fun _ -> raise(Arg.Bad "No anomynous arg")) usage_msg;
+  let project = if !project = "" then "opam.project"
+                else !project ^ ".project" in
 
-  let select pkg opam =
-    (* OpamPackage.(Name.to_string (name pkg)) = "mybuild" *)
-    true
+  let select =
+    if !desired_tags = [] then (fun _ _ -> true)
+    else
+      let desired_tags = List.fold_left (fun s t -> StringSet.add t s)
+                                        StringSet.empty !desired_tags in
+      let is_desired t = StringSet.mem t desired_tags in
+      fun pkg opam ->
+      List.exists is_desired (OpamFile.OPAM.tags opam)
   in
   let repos = Cosmetrics_opam.git ~select () in
   Printf.printf "# repos: %d\n%!" (List.length repos);
   (* let repos = List.take 10 repos in *)
-  let project = "opam-repo" in
 
   (try Unix.mkdir project 0o775 with _ -> ());
   Unix.chdir project;
