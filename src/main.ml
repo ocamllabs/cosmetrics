@@ -10,17 +10,14 @@ let is_finite x = neg_infinity < x && x < infinity
 let is_main_author s =
   Cosmetrics.Summary.(s.n > 5 && s.pct > 1.)
 
-let add_stats html repo commits =
+let list_people html commits =
   let summary = Cosmetrics.Summary.make commits in
-  let open Cosmetrics in
-  let total = List.fold_left (fun s (_, n) -> s + n.Summary.n) 0 summary in
-  H.printf html "<p>Total number of commits (excl. merge): %d</p>\n\
-                 <ol>" total;
+  H.print html "<ol>";
   List.iter (fun (a,s) ->
              let main = if is_main_author s then "main"
                         else "occasional" in
              H.printf html "<li class='%s'>%s: %d (%.1f%%)</li>"
-                       main a s.Summary.n s.Summary.pct
+                       main a s.C.Summary.n s.C.Summary.pct
             ) summary;
   H.printf html "</ol>"
 
@@ -325,14 +322,13 @@ let main project repo_commits =
   let repo_commits =
     List.sort (fun (n1,_,_) (n2,_,_) -> String.compare n1 n2) repo_commits in
 
-  let process ?(busyness=true) ?(more_graphs=fun _ -> ())
-              ?(more=fun _ -> return_unit) ?fname
+  let process ?(busyness=true) ?list_people:(want_list_people=false)
+              ?(more_graphs=fun _ -> ()) ?(more=fun _ -> return_unit) ?fname
               (repo, _, commits) =
     let html = H.make () in
     H.style html "div.graph {
-                    float: right;
                     margin-right: 2ex;
-                    width: 60%;
+                    width: 80%;
                     height: 30ex;
                   }
                   .main {
@@ -340,9 +336,12 @@ let main project repo_commits =
                   }";
     H.print html "<a href='index.html'>Index</a>";
     H.printf html "<h1>Commits and authors (project = %s)</h1>" project;
+    H.printf html "<p>Total number of commits (excl. merge): %d</p>\n"
+             (C.Commit.Set.cardinal commits);
+
     let alv = graph html ~start ~stop repo commits ~busyness in
     more_graphs html;
-    add_stats html repo commits;
+    if want_list_people then list_people html commits;
     more html >>= fun () ->
     let fname = match fname with Some n -> n | None -> repo ^ ".html" in
     H.write html fname >>= fun () ->
