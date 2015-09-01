@@ -386,8 +386,9 @@ let main project repo_commits =
   H.print html "</ul>";
   H.print html "<h1>Repositories</h1>\n\
                 <ol>\n";
-  let link (repo, _, _) =
-    H.printf html "<li><a href=\"%s.html\">%s</a></li>\n" repo repo in
+  let link (repo, _, commits) =
+    H.printf html "<li><a href=\"%s.html\">%s</a> — %d commits</li>\n"
+             repo repo (C.Commit.Set.cardinal commits) in
   List.iter link repo_commits;
   H.print html "</ol>\n";
   H.write html "index.html"
