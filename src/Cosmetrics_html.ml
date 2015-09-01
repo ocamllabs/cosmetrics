@@ -32,6 +32,9 @@ let print html s = Buffer.add_string html.body s
 
 let printf html = Printf.ksprintf (print html)
 
+type graph_type =
+  [`Area | `Area_spline | `Area_step | `Bar | `Line | `Spline | `Step]
+
 let string_of_type = function
   | `Line -> "line"
   | `Bar -> "bar"
