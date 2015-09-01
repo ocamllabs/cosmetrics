@@ -44,10 +44,12 @@ let string_of_type = function
 let rec list_make n v =
   if n <= 0 then [] else v :: list_make (n - 1) v
 
+let id_float (x: float) = x
+
 let graph_gen name html ~axisx ~print_x ~print_y1 ~print_y2
               ?(ty=`Area)
               ?(y2label="") ?tys2 ?(colors2=[]) ?y2min ?y2max ?(y2=[])
-              ?(ylabel="") ?tys ?ymin ?ymax ~colors y1 =
+              ?(ylabel="") ?tys ?ymin ?ymax ?(ylog=false) ~colors y1 =
   let n1 = List.length y1 in
   let n2 = List.length y2 in
   if List.length colors < n1 then
@@ -70,8 +72,17 @@ let graph_gen name html ~axisx ~print_x ~print_y1 ~print_y2
   (* FIXME: should check that |x| the length of all y's. *)
   html.i <- html.i + 1;
   printf html "<div id=\"cosmetrics%d\" class=\"graph\"></div>\n" html.i;
-  printf html "<script type=\"text/javascript\">\n\
-                 var chart%d = c3.generate({
+  print  html "<script type=\"text/javascript\">\n";
+  if ylog then (
+    (* Keep the original values for the tooltip. *)
+    printf html "var y%d = new Array();\n" html.i;
+    List.iteri (fun i (name, _ as y) ->
+                printf html "y%d['data%d'] = [\n" html.i i;
+                print_y1 html i ~f:id_float y;
+                print html "];\n"
+               ) y1;
+  );
+  printf html "var chart%d = c3.generate({
                    bindto: '#cosmetrics%d',
                    data: {
                      x: 'x',
@@ -79,12 +90,13 @@ let graph_gen name html ~axisx ~print_x ~print_y1 ~print_y2
                        ['x', " html.i html.i;
   print_x html;
   print html "],\n";
+  let f = if ylog then log10 else id_float in
   List.iteri (fun i y -> printf html "['data%d', " i;
-                       print_y1 html i y;
+                       print_y1 html i ~f y;
                        print html "],\n"
              ) y1;
   List.iteri (fun i y -> printf html "['data%d', " (n1 + i);
-                       print_y2 html i y;
+                       print_y2 html i ~f:id_float y;
                        print html "],\n"
              ) y2;
   print html "],\n\
@@ -127,8 +139,16 @@ let graph_gen name html ~axisx ~print_x ~print_y1 ~print_y2
   (match y2max with Some y -> printf html "max: %g," y
                  | None -> ());
   printf html "   }
-                }
-              })\n\
+                },\n";
+  if ylog then (
+    printf html "tooltip: {
+                   format: {
+                     value: function (value, ratio, id, index) {
+                       return (y%d[id][index]); },
+                   }
+                 }\n" html.i;
+  );
+  printf html "})\n\
               </script>\n"
 
 
@@ -146,23 +166,23 @@ let merge ts =
   List.iteri (fun i (_, t) -> T.iter t (add i)) ts;
   !t_merged
 
-let print_serie html i t_merged =
+let print_serie html i ~f t_merged =
   let not_first_el = ref false in
   T.iter t_merged (fun _ v -> if !not_first_el then print html ", ";
-                            print html (string_of_float v.(i));
+                            print html (string_of_float (f v.(i)));
                             not_first_el := true)
 
 let timeseries html ?(xlabel="") ?(ty=`Area)
                ?y2label ?tys2 ?colors2 ?y2min ?y2max ?(y2=[])
-               ?ylabel ?tys ?ymin ?ymax ~colors ts =
+               ?ylabel ?tys ?ymin ?ymax ?ylog ~colors ts =
   let n2 = List.length y2 in
   (* Put [y2] in front that that the common case where it is empty is O(1) *)
   let t = merge (y2 @ ts) in
   let x =
     T.mapi t (fun d _ -> "'" ^ Printer.Calendar.sprint "%Y-%m-%d" d ^ "'") in
   let print_x html = print html (String.concat ", " (T.values x)) in
-  let print_y1 html i _ = print_serie html (n2 + i) t
-  and print_y2 html i _ = print_serie html i t in
+  let print_y1 html i ~f _ = print_serie html (n2 + i) ~f t
+  and print_y2 html i ~f _ = print_serie html i ~f t in
   let axisx = Printf.sprintf "type: 'timeseries',
                               label: %s,
                               tick: {
@@ -172,20 +192,20 @@ let timeseries html ?(xlabel="") ?(ty=`Area)
                               }" (single_quote xlabel) in
   graph_gen "timeseries" html ~axisx ~print_x ~print_y1 ~print_y2
             ~ty ?y2label ?tys2 ?colors2 ?y2min ?y2max ~y2
-            ?ylabel ?tys ?ymin ?ymax ~colors ts
+            ?ylabel ?tys ?ymin ?ymax ?ylog ~colors ts
 
 
-let print_array html _ (_name, y) =
+let print_array html _ ~f (_name, y) =
   if Array.length y > 0 then (
-    printf html "%f" y.(0);
+    printf html "%f" (f y.(0));
     for i = 1 to Array.length y - 1 do
-      printf html ", %f" y.(i)
+      printf html ", %f" (f y.(i))
     done
   )
 
 let xy html ?(xlabel="") x  ?(ty=`Line)
        ?y2label ?tys2 ?colors2 ?y2min ?y2max ?y2
-       ?ylabel ?tys ?ymin ?ymax ~colors y1 =
+       ?ylabel ?tys ?ymin ?ymax ?ylog ~colors y1 =
   let print_x html =
     for i = 0 to Array.length x - 1 do printf html "%f, " x.(i) done in
   let axisx = Printf.sprintf "label: %s,
@@ -196,7 +216,7 @@ let xy html ?(xlabel="") x  ?(ty=`Line)
             ~print_y1:print_array
             ~print_y2:print_array
             ~ty ?y2label ?tys2 ?colors2 ?y2min ?y2max ?y2
-            ?ylabel ?tys ?ymin ?ymax ~colors y1
+            ?ylabel ?tys ?ymin ?ymax ?ylog ~colors y1
 
 
 (** The rows and columns of [m] correspond to the groups.
