@@ -29,8 +29,8 @@ let graph_commit_contribution html ?(n=25) commits =
   let x = Array.init n (fun i -> float(i+1)) in
   let y = List.map (fun (_, s) -> float s.C.Summary.n) smry in
   let y = Array.of_list y in
-  H.xy html x ~xlabel:"authors" ~nxticks:(max 3 (min n 150))
-       ~ty:`Area ~bar_ratio:0.8 ~ylabel:"# commits"
+  H.xy html x ~xlabel:"authors"
+       ~ty:`Area ~bar_ratio:0.8 ~ylabel:"# log₁₀ commits" ~ylog:true
        ["# commits per author", y] ~colors:[0x336600]
 
 
