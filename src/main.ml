@@ -17,7 +17,7 @@ let list_people html commits =
              let main = if is_main_author s then "main"
                         else "occasional" in
              H.printf html "<li class='%s'>%s: %d (%.1f%%)</li>"
-                       main a s.C.Summary.n s.C.Summary.pct
+                      main a s.C.Summary.n s.C.Summary.pct
             ) summary;
   H.printf html "</ol>"
 
@@ -178,6 +178,70 @@ let paths html repo_commits =
   H.chord html m ~colors ~names ~width:1000 ~height:1000
           ~inner_radius:300.;
   H.print html "</div>\n"
+
+
+let graph_dependencies ?(n=80) fname =
+  (* Record the [n] packages names which are the more used by other
+     packages (regardless of versions). *)
+  let module M = OpamPackage.Name.Map in
+  let module S = OpamPackage.Name.Set in
+  let used_by = ref M.empty in
+  let update_from_pkg pkg opam _ =
+    let name0 = OpamPackage.name pkg in
+    let update (name, _) =
+      try
+        let p = M.find name !used_by in
+        p := S.add name0 !p
+      with Not_found ->
+        used_by := M.add name (ref(S.singleton name0)) !used_by in
+    OpamFormula.iter update (OpamFile.OPAM.depends opam) in
+  Cosmetrics_opam.iter_packages update_from_pkg;
+  let used = M.fold (fun n s l -> (n, !s, S.cardinal !s) :: l) !used_by [] in
+  let used = List.sort (fun (_,_,c1) (_,_,c2) -> compare c2 c1) used in
+  let used_graph = if List.length used > 81 then List.take 81 used else used in
+  (* Filter out ocamlfind — otherwise dominate the graph *)
+  let is_not_ocamlfind (n,_,_) = OpamPackage.Name.to_string n <> "ocamlfind" in
+  let used_graph = List.filter is_not_ocamlfind used_graph in
+  let n = List.length used_graph in
+  (* Build index *)
+  let index = ref M.empty in
+  List.iteri (fun i (n,_,_) -> index := M.add n i !index) used_graph;
+  let index_of name = M.find name !index in
+  (* Populate matrix *)
+  let m = Array.make_matrix n n 0. in
+  let populate (name, by, _) =
+    let m = m.(index_of name) in
+    S.iter (fun nm -> try let i = index_of nm in m.(i) <- m.(i) +. 1.
+                    with Not_found -> ()
+           ) by  in
+  List.iter populate used_graph;
+
+  let html = H.make () in
+  H.print html "<h1>Packages used by other packages</h1>\n";
+  (* Graph *)
+  let names =
+    List.map (fun (n,_,_) -> OpamPackage.Name.to_string n) used_graph in
+  let colors = List.mapi (fun i _ -> color i) used_graph in
+  H.chord html m ~colors ~names ~width:1000 ~height:1000
+          ~inner_radius:300.;
+  (* Table *)
+  H.style html ".dependencies .number {
+                  font-size: 80%;
+                  color: #929295;
+                }";
+  H.print html "<table class='dependencies'>\n";
+  List.iteri (fun i (name, by, n) ->
+              let by =
+                S.fold (fun n l -> OpamPackage.Name.to_string n :: l) by [] in
+              let used_by = "Used by: " ^ String.concat ", " by in
+              H.printf html "<tr><td class='number'>%d.</td><td>%s</td>
+                             <td><span title=%s>%d</span></td></tr>\n"
+                       (i+1) (OpamPackage.Name.to_string name)
+                       (H.single_quote used_by) n
+             ) used;
+  H.print html "</table>\n";
+  H.write html fname
+
 
 let contribution_order repo_commits fname =
   let html = H.make () in
@@ -375,6 +439,8 @@ let main project repo_commits =
       contribution_order repo_commits, "contribution.html");
      ("Average time between releases",
       average_releases repo_commits, "average-releases.html");
+     ("Package dependencies",
+      graph_dependencies ~n:80, "pkg-deps.html");
     ] in
   Lwt_list.iter_p (fun (_, f, h) -> f h) more >>= fun () ->
   (* Create the index page *)
