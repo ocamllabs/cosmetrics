@@ -1,3 +1,5 @@
+module StringSet = Set.Make(String)
+
 module String = struct
   include String
 

@@ -138,7 +138,7 @@ val history : Git_unix.FS.t -> History.t Lwt.t
 
 val authors_timeseries :
   ('r * Commit.Set.t) list -> ('r * Commit.t) Timeseries.t StringMap.t
-(** [authors_timeseries repo_commits]: given a list of repositories
+(** [authors_timeseries repo_commits]: given a list of repository
     names (represented as type ['r]) and commits, return a map that
     gives, for each author, the time-series of its commits with the
     repository information. *)

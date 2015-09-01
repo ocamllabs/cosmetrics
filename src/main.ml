@@ -243,6 +243,49 @@ let graph_dependencies ?(n=80) fname =
   H.write html fname
 
 
+let authors commits =
+  let module S = StringSet in
+  C.Commit.Set.fold (fun c s -> S.add (C.Commit.author c) s) commits S.empty
+  |> S.elements
+
+let lifetime_months commits =
+  let t0, t1 = C.Commit.date_range_exn commits in
+  Calendar.(to_unixfloat t1 -. to_unixfloat t0) /. (60. *. 60. *. 24. *. 30.)
+
+let contributions repo_commits fname =
+  let repo_authors =
+    List.map (fun (p, _, commits) ->
+              let a = authors commits in
+              (p, a, List.length a, lifetime_months commits)
+             ) repo_commits
+    |> List.sort (fun (_,_,n1,_) (_,_,n2,_) -> compare n2 n1) in
+
+  let html = H.make () in
+  H.print html "<h1>Number of contributors</h1>\n";
+  let n = List.length repo_authors in
+  let x = Array.init n (fun i -> float(i + 1)) in
+  let y = List.map (fun (_,_,n,_) -> float n) repo_authors |> Array.of_list in
+  let y2 = List.map (fun (_,_,_,t) -> t) repo_authors |> Array.of_list in
+  H.xy html x ~xlabel:"repositories"
+       ~ty:`Area ~ylabel:"# authors" ~ylog:true
+       ["# authors per repository", y] ~colors:[0x336600]
+       ~y2:["lifetime (months)", y2] ~colors2:[0xCC6600] ~tys2:[`Line];
+  H.style html ".contributions .duration {
+                  color: #929295;
+                  padding-left: 2ex;
+                }";
+  H.printf html "<table class='contributions'>\n";
+  List.iter (fun (pkg, authors, n, months) ->
+             H.printf html "<tr><td>%s</td>\
+                            <td><span title=%s>%d</span></td>\
+                            <td class='duration'>≈ %.1f months</td></tr>\n"
+                      pkg (H.single_quote (String.concat ", "  authors)) n
+                      months
+            ) repo_authors;
+  H.printf html "</table>\n";
+  H.write html fname
+
+
 let contribution_order repo_commits fname =
   let html = H.make () in
   let module S = Set.Make(String) in
@@ -435,6 +478,8 @@ let main project repo_commits =
                           ~more_graphs:(busyness repo_commits busys)
                   >>= fun _ -> return_unit),
       "All_repositories.html");
+     ("Contributions",
+      contributions repo_commits, "contributions.html");
      ("Contribution order",
       contribution_order repo_commits, "contribution.html");
      ("Average time between releases",
@@ -458,8 +503,6 @@ let main project repo_commits =
   List.iter link repo_commits;
   H.print html "</ol>\n";
   H.write html "index.html"
-
-module StringSet = Set.Make(String)
 
 let () =
   let clone = ref false in
