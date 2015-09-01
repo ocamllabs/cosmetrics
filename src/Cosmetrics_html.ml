@@ -44,6 +44,10 @@ let string_of_type = function
 let rec list_make n v =
   if n <= 0 then [] else v :: list_make (n - 1) v
 
+let js_of_float (x: float) =
+  if neg_infinity < x && x < infinity then string_of_float x
+  else "NaN" (* accepted by c3.js for missing data *)
+
 let id_float (x: float) = x
 
 let graph_gen name html ~axisx ~print_x ~print_y1 ~print_y2
@@ -169,7 +173,7 @@ let merge ts =
 let print_serie html i ~f t_merged =
   let not_first_el = ref false in
   T.iter t_merged (fun _ v -> if !not_first_el then print html ", ";
-                            print html (string_of_float (f v.(i)));
+                            print html (js_of_float (f v.(i)));
                             not_first_el := true)
 
 let timeseries html ?(xlabel="") ?(ty=`Area)
@@ -197,9 +201,10 @@ let timeseries html ?(xlabel="") ?(ty=`Area)
 
 let print_array html _ ~f (_name, y) =
   if Array.length y > 0 then (
-    printf html "%f" (f y.(0));
+    print html (js_of_float (f y.(0)));
     for i = 1 to Array.length y - 1 do
-      printf html ", %f" (f y.(i))
+      print html ", ";
+      print html (js_of_float(f y.(i)));
     done
   )
 
@@ -207,7 +212,10 @@ let xy html ?(xlabel="") x  ?(ty=`Line)
        ?y2label ?tys2 ?colors2 ?y2min ?y2max ?y2
        ?ylabel ?tys ?ymin ?ymax ?ylog ~colors y1 =
   let print_x html =
-    for i = 0 to Array.length x - 1 do printf html "%f, " x.(i) done in
+    for i = 0 to Array.length x - 1 do
+      print html (js_of_float x.(i));
+      print html ", ";
+    done in
   let axisx = Printf.sprintf "label: %s,
                               tick: {
                                 fit: true,
