@@ -54,7 +54,7 @@ let js_of_float (x: float) =
 let id_float (x: float) = x
 
 let graph_gen name html ~axisx ~print_x ~print_y1 ~print_y2
-              ?(ty=`Area)
+              ?(ty=`Area) ?bar_ratio
               ?(y2label="") ?tys2 ?(colors2=[]) ?y2min ?y2max ?(y2=[])
               ?(ylabel="") ?tys ?ymin ?ymax ?(ylog=false) ~colors y1 =
   let n1 = List.length y1 in
@@ -147,6 +147,12 @@ let graph_gen name html ~axisx ~print_x ~print_y1 ~print_y2
                  | None -> ());
   printf html "   }
                 },\n";
+  (match bar_ratio with
+   | Some r ->
+      printf html "bar: {
+                     width: { ratio: %f }
+                   }\n" (max 0. (min 1. r))
+   | None -> ());
   if ylog then (
     printf html "tooltip: {
                    format: {
@@ -179,7 +185,7 @@ let print_serie html i ~f t_merged =
                             print html (js_of_float (f v.(i)));
                             not_first_el := true)
 
-let timeseries html ?(xlabel="") ?(ty=`Area)
+let timeseries html ?(xlabel="") ?(ty=`Area) ?bar_ratio
                ?y2label ?tys2 ?colors2 ?y2min ?y2max ?(y2=[])
                ?ylabel ?tys ?ymin ?ymax ?ylog ~colors ts =
   let n2 = List.length y2 in
@@ -198,7 +204,7 @@ let timeseries html ?(xlabel="") ?(ty=`Area)
                                 count: 20,
                               }" (single_quote xlabel) in
   graph_gen "timeseries" html ~axisx ~print_x ~print_y1 ~print_y2
-            ~ty ?y2label ?tys2 ?colors2 ?y2min ?y2max ~y2
+            ~ty ?bar_ratio ?y2label ?tys2 ?colors2 ?y2min ?y2max ~y2
             ?ylabel ?tys ?ymin ?ymax ?ylog ~colors ts
 
 
@@ -211,7 +217,7 @@ let print_array html _ ~f (_name, y) =
     done
   )
 
-let xy html ?(xlabel="") x  ?(ty=`Line)
+let xy html ?(xlabel="") ?nxticks x  ?(ty=`Line) ?bar_ratio
        ?y2label ?tys2 ?colors2 ?y2min ?y2max ?y2
        ?ylabel ?tys ?ymin ?ymax ?ylog ~colors y1 =
   let print_x html =
@@ -219,14 +225,18 @@ let xy html ?(xlabel="") x  ?(ty=`Line)
       print html (js_of_float x.(i));
       print html ", ";
     done in
+  let nxticks = match nxticks with
+    | None -> ""
+    | Some n -> Printf.sprintf "count: %d," n in
   let axisx = Printf.sprintf "label: %s,
                               tick: {
                                 fit: true,
-                              }" (single_quote xlabel) in
+                                %s
+                              }" (single_quote xlabel) nxticks in
   graph_gen "xy" html ~axisx ~print_x
             ~print_y1:print_array
             ~print_y2:print_array
-            ~ty ?y2label ?tys2 ?colors2 ?y2min ?y2max ?y2
+            ~ty ?bar_ratio ?y2label ?tys2 ?colors2 ?y2min ?y2max ?y2
             ?ylabel ?tys ?ymin ?ymax ?ylog ~colors y1
 
 

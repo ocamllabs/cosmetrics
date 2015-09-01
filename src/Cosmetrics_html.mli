@@ -29,7 +29,7 @@ type graph_type =
 val timeseries :
   html ->
   ?xlabel:string ->
-  ?ty:graph_type ->
+  ?ty:graph_type -> ?bar_ratio: float ->
   ?y2label:string -> ?tys2:graph_type list -> ?colors2:int list ->
   ?y2min:float -> ?y2max:float ->
   ?y2:(string * float Cosmetrics.Timeseries.t) list ->
@@ -41,8 +41,8 @@ val timeseries :
 
 val xy :
   html ->
-  ?xlabel:string -> float array ->
-  ?ty:graph_type ->
+  ?xlabel:string -> ?nxticks:int -> float array ->
+  ?ty:graph_type -> ?bar_ratio: float ->
   ?y2label:string -> ?tys2:graph_type list -> ?colors2:int list ->
   ?y2min:float -> ?y2max:float -> ?y2:(string * float array) list ->
   ?ylabel:string -> ?tys:graph_type list ->
