@@ -23,7 +23,7 @@ let list_people html commits =
 
 (* Graph of "% of commits" → "# of authors".
    [n] is the number of bins (for the range) *)
-let graph_commit_contribution html ?(n=20) commits =
+let graph_commit_contribution html ?(n=25) commits =
   let smry = Cosmetrics.Summary.make_map commits in
   let max_pct = C.StringMap.fold (fun _ s m -> max m s.C.Summary.pct) smry 0. in
   let max_pct = ceil max_pct in
@@ -35,10 +35,12 @@ let graph_commit_contribution html ?(n=20) commits =
                     let i = min i (n - 1) in
                     y.(i) <- y.(i) +. 1.;
                    ) smry;
-  let y = Array.map (fun y -> if y = 0. then 0. else log10 y) y in
-  H.xy html x ~xlabel:"%" ~ty:`Bar
-       ~ylabel:"log₁₀(# authors)" ~colors:[0x336600]
-       ["log₁₀ Authors", y]
+  let max_y = Array.fold_left max 0. y in
+  let ylog = max_y > 50. in
+  let ylabel = if ylog then "log₁₀(# authors)" else "# authors" in
+  H.xy html x ~xlabel:"% commits" ~ty:`Bar
+       ~ylog ~ylabel ~colors:[0x336600]
+       ["Authors", y]
 
 let rec cummulative_loop prev = function
   | [] -> []
