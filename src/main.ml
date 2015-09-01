@@ -24,23 +24,15 @@ let list_people html commits =
 (* Graph of "% of commits" → "# of authors".
    [n] is the number of bins (for the range) *)
 let graph_commit_contribution html ?(n=25) commits =
-  let smry = Cosmetrics.Summary.make_map commits in
-  let max_pct = C.StringMap.fold (fun _ s m -> max m s.C.Summary.pct) smry 0. in
-  let max_pct = ceil max_pct in
-  let d = max_pct /. float n in
-  let x = Array.init n (fun i -> (float(i + 1)) *. d) in
-  let y = Array.make n 0. in
-  C.StringMap.iter (fun _ s ->
-                    let i = truncate (s.C.Summary.pct /. d) in
-                    let i = min i (n - 1) in
-                    y.(i) <- y.(i) +. 1.;
-                   ) smry;
-  let max_y = Array.fold_left max 0. y in
-  let ylog = max_y > 50. in
-  let ylabel = if ylog then "log₁₀(# authors)" else "# authors" in
-  H.xy html x ~xlabel:"% commits" ~ty:`Bar
-       ~ylog ~ylabel ~colors:[0x336600]
-       ["Authors", y]
+  let smry = Cosmetrics.Summary.make commits in
+  let n = List.length smry in
+  let x = Array.init n (fun i -> float(i+1)) in
+  let y = List.map (fun (_, s) -> float s.C.Summary.n) smry in
+  let y = Array.of_list y in
+  H.xy html x ~xlabel:"authors" ~nxticks:(max 3 (min n 150))
+       ~ty:`Area ~bar_ratio:0.8 ~ylabel:"# commits"
+       ["# commits per author", y] ~colors:[0x336600]
+
 
 let rec cummulative_loop prev = function
   | [] -> []
@@ -356,7 +348,7 @@ let main project repo_commits =
                     color: #336600;
                   }";
     H.print html "<a href='index.html'>Index</a>";
-    H.printf html "<h1>Commits and authors (project = %s)</h1>" project;
+    H.printf html "<h1>Commits and authors (%s)</h1>" repo;
     H.printf html "<p>Total number of commits (excl. merge): %d</p>\n"
              (C.Commit.Set.cardinal commits);
 
@@ -374,7 +366,7 @@ let main project repo_commits =
   Lwt_list.map_p process repo_commits >>= fun busys ->
   let more =
     [("Commits and authors",
-      (fun fname -> process ("all repositories", None, all_commits) ~fname
+      (fun fname -> process ("all of " ^ project, None, all_commits) ~fname
                           ~busyness:false
                           ~more_graphs:(busyness repo_commits busys)
                   >>= fun _ -> return_unit),
