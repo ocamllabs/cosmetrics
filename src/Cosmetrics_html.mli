@@ -36,7 +36,7 @@ val timeseries :
   ?ylabel:string -> ?tys:graph_type list ->
   ?ymin:float -> ?ymax:float -> ?ylog:bool ->
   colors:int list -> (string * float Cosmetrics.Timeseries.t) list -> unit
-(** [timeseries ~colors ts] graph the list of timeseries [ts] each
+(** [timeseries html ~colors ts] graph the list of timeseries [ts] each
     with the color at the same position in [colors]. *)
 
 val xy :
@@ -55,3 +55,8 @@ val chord :
   ?inner_radius:float -> ?outer_radius:float -> ?names:string list ->
   ?tooltips:string list ->
   colors:int list -> float array array -> unit
+(** [chord html ~colors m] append to [html] a chord graph for the
+    relations expressed by the square matrix [m]: [m.(i).(j)] is the
+    number of links from [i] to [j]. *)
+
+;;

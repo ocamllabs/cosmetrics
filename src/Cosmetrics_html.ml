@@ -151,7 +151,7 @@ let graph_gen name html ~axisx ~print_x ~print_y1 ~print_y2
    | Some r ->
       printf html "bar: {
                      width: { ratio: %f }
-                   }\n" (max 0. (min 1. r))
+                   },\n" (max 0. (min 1. r))
    | None -> ());
   if ylog then (
     printf html "tooltip: {
