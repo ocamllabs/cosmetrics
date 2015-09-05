@@ -5,6 +5,8 @@ open Lwt
 open CalendarLib
 module T = Cosmetrics.Timeseries
 
+let openfile_pool = Lwt_pool.create 100 (fun () -> return_unit)
+
 let single_quote s =
   let b = Buffer.create (2 + String.length s) in
   Buffer.add_char b '\'';
@@ -356,7 +358,7 @@ let chord html ?(padding=0.05) ?(width=600) ?(height=600)
   print html "</script>\n"
 
 
-let write html fname =
+let write_no_pool html fname () =
   let open Lwt_io in
   open_file fname ~mode:output >>= fun fh ->
   let common_head =
@@ -379,3 +381,6 @@ let write html fname =
   write fh "</style>\n</head>\n<body>\n" >>= fun () ->
   write fh (Buffer.contents html.body) >>= fun () ->
   write fh "</body>\n</html>"
+
+let write html fname =
+  Lwt_pool.use openfile_pool (write_no_pool html fname)

@@ -6,6 +6,8 @@ open Cosmetrics_utils
 module Store = Git_unix.FS
 module G = Git_unix.Sync.Make(Store)
 
+let openfile_pool = Lwt_pool.create 100 (fun () -> return_unit)
+
 let read_commit_exn t sha =
   Store.read_exn t (Git.SHA.of_commit sha) >>= fun v ->
   match v with
@@ -70,7 +72,7 @@ module Cache = struct
     if version <> t.version || newer_dep then (
       Lwt_io.close fh >>= fun () ->
       log t "Update cache %s\n" t.fname >>= fun () ->
-      update t
+      update t (* previous handle closed, thus only 1 in use *)
     )
     else (
       Lwt_io.read_value fh >>= fun v ->
@@ -78,12 +80,15 @@ module Cache = struct
       v
     )
 
+  let read_exn_pool t () =
+    Lwt_pool.use openfile_pool (read_exn t)
+
   let read t =
-    catch (read_exn t)
+    catch (read_exn_pool t)
           (function Unix.Unix_error(Unix.ENOENT, _, _) ->
                     (* Cache does not exist, create one *)
                     log t "Create cache %s\n" t.fname >>= fun () ->
-                    update t
+                    Lwt_pool.use openfile_pool (fun () -> update t)
                   | e -> fail e)
 
   let default_log s =
@@ -344,7 +349,7 @@ module Tag = struct
       name = String.sub s 10 (String.length s - 10);
       date = Calendar.from_unixfloat (Int64.to_float t) }
 
-  let get_ref t r =
+  let get_ref t r () =
     if String.starting ~w:"refs/tags/" (Git.Reference.to_raw r) then
       Store.read_reference_exn t r >>= fun sha ->
       Store.read_exn t (Git.SHA.of_commit sha) >|= fun v ->
@@ -358,13 +363,17 @@ module Tag = struct
       | Git.Value.Blob _ | Git.Value.Tree _ -> None
     else return_none
 
+  (* Like [get_ref] but wait if too many files are already opened. *)
+  let get_ref_pool t r =
+    Lwt_pool.use openfile_pool (get_ref t r)
+
   let get t =
     Store.references t >>= fun r ->
     (* Because of the bug https://github.com/mirage/ocaml-git/issues/124
        remove possible duplicates in the list. *)
     let r = List.sort Git.Reference.compare r in
     let r = List.remove_consecutive_duplicates Git.Reference.equal r in
-    Lwt_list.filter_map_p (get_ref t) r
+    Lwt_list.filter_map_p (get_ref_pool t) r
 end
 
 
